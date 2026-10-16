@@ -377,8 +377,57 @@ void main() {
       );
     });
   });
-}
 
+  // The Gradle assertions read a file this project writes comments into, and one
+  // of those comments names the very string that is being forbidden. The
+  // stripping helper is therefore load-bearing, so it is tested like any other
+  // logic rather than trusted.
+  group('_kotlinCode comment stripping', () {
+    test('removes line and block comments while keeping the code', () {
+      const String source = r'''
+        val a = 1 // getByName("debug")
+        /* getByName("debug") */
+        val b = 2
+      ''';
+
+      final String code = _kotlinCode(source);
+
+      expect(code, isNot(contains('getByName')));
+      expect(code, contains('val a = 1'));
+      expect(code, contains('val b = 2'));
+    });
+
+    test('keeps comment markers that live inside strings', () {
+      const String source = r'''
+        val url = "https://example.com/x"
+        val raw = """
+          // not a comment
+          val inside = "quoted"
+        """
+        val after = 3
+      ''';
+
+      final String code = _kotlinCode(source);
+
+      expect(code, contains('https://example.com/x'));
+      expect(code, contains('// not a comment'));
+      expect(code, contains('val after = 3'));
+    });
+
+    test('an escaped quote does not terminate a string', () {
+      const String source = r'''
+        val s = "a \" // b" // trailing
+        val after = 4
+      ''';
+
+      final String code = _kotlinCode(source);
+
+      expect(code, contains(r'"a \" // b"'));
+      expect(code, contains('val after = 4'));
+      expect(code, isNot(contains('trailing')));
+    });
+  });
+}
 
 /// Returns the contents of the first `<name> ... </name>` pair in [xml], or an
 /// empty string when that section is absent.
@@ -393,21 +442,29 @@ String _xmlSection(String xml, String name) {
 }
 
 
-/// Returns [source] with Kotlin comments removed.
+/// Returns [source] with Kotlin comments, and their contents, removed.
 ///
-/// Assertions about this project's Gradle config have to test code, not prose.
-/// The header of build.gradle.kts deliberately names the template line it refuses
-/// to copy (`signingConfig = signingConfigs.getByName("debug")`), so a check run
-/// against the raw file text fails on its own explanation.
+/// Assertions about this project's Gradle config have to test code rather than
+/// prose: the header of build.gradle.kts deliberately names the template line it
+/// refuses to copy, so a check run against the raw file text fails on the file's
+/// own explanation.
+///
+/// This is not a Kotlin lexer. It understands line comments, block comments,
+/// escaped quotes and triple-quoted strings, which is what build.gradle.kts
+/// contains. A string template holding a quote inside a `"${...}"` expression
+/// can still mislead the string tracking, so do not lean on it for anything
+/// beyond the assertions in this file.
 String _kotlinCode(String source) {
   final StringBuffer out = StringBuffer();
   bool inLineComment = false;
   bool inBlockComment = false;
   bool inString = false;
+  bool inRawString = false;
 
   for (int i = 0; i < source.length; i++) {
     final String c = source[i];
     final String next = i + 1 < source.length ? source[i + 1] : '';
+    final String next2 = i + 2 < source.length ? source[i + 2] : '';
 
     if (inLineComment) {
       if (c == '\n') {
@@ -416,6 +473,7 @@ String _kotlinCode(String source) {
       }
       continue;
     }
+
     if (inBlockComment) {
       if (c == '*' && next == '/') {
         inBlockComment = false;
@@ -423,6 +481,19 @@ String _kotlinCode(String source) {
       }
       continue;
     }
+
+    if (inRawString) {
+      // A triple-quoted string takes no escape sequences, so only the closing
+      // """ ends one; quotes inside it are ordinary characters.
+      out.write(c);
+      if (c == '"' && next == '"' && next2 == '"') {
+        out.write('""');
+        i += 2;
+        inRawString = false;
+      }
+      continue;
+    }
+
     if (inString) {
       out.write(c);
       if (c == '\\') {
@@ -435,20 +506,32 @@ String _kotlinCode(String source) {
       }
       continue;
     }
+
+    if (c == '"' && next == '"' && next2 == '"') {
+      out.write('"""');
+      i += 2;
+      inRawString = true;
+      continue;
+    }
+
     if (c == '/' && next == '/') {
       inLineComment = true;
       i++;
       continue;
     }
+
     if (c == '/' && next == '*') {
       inBlockComment = true;
       i++;
       continue;
     }
+
     if (c == '"') {
       inString = true;
     }
+
     out.write(c);
   }
+
   return out.toString();
 }
