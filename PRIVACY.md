@@ -13,8 +13,9 @@ reporting, and no advertising. Every transaction you enter stays in a private
 database on your phone. The only time the app itself sends anything off your
 device is when you yourself tap **Backup to Google Drive** for a specific month —
 and it goes to _your_ Google Drive, not to the developer. Android's own
-system-level backup is switched off for this app, including the newer
-cross-platform transfer path; see "Android Auto Backup is turned off" below.
+system-level backup is switched off for this app, and the newer cross-platform
+transfer route has no counterpart for it to carry anything to; see "Android Auto
+Backup is turned off" below.
 
 The developer of this app cannot see your data. There is no backend that could
 receive it.

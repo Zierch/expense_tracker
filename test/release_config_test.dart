@@ -47,14 +47,12 @@ void main() {
         // can reach a signing config through getByName("debug") or signingConfigs["debug"],
         // and checking only the first spelling leaves the second as a way back in.
         //
-        // Checked line by line rather than through _kotlinCode, because this is the one
-        // assertion that forbids something, and a character-level stripper can only fail
-        // that kind of check in the unsafe direction: a string template on the same line
-        // can swallow whatever follows it, and build.gradle.kts really does contain one.
-        final List<String> offenders = _codeLines(gradleSource)
-            .where((String line) => line.contains('"debug"'))
-            .map((String line) => line.trim())
-            .toList();
+        // This is the one assertion here that forbids something, so it cannot afford a
+        // classifier that fails quietly: a missed token ships a debug-signed APK, and
+        // that costs every user their database when they next try to upgrade.
+        // _debugSigningOffenders asks two classifiers with opposite blind spots and is
+        // satisfied only when both come back clean.
+        final List<String> offenders = _debugSigningOffenders(gradleSource);
 
         expect(
           offenders,
@@ -165,6 +163,29 @@ void main() {
             'android/, so a keystore dropped anywhere else in the tree would sail '
             'past it; the root patterns catch that.',
       );
+    });
+
+    test('root .gitignore must cover local data and review notes', () {
+      final String gitignore = File('.gitignore').readAsStringSync();
+
+      // Two of these are worse than clutter. A SQLite file or an export dump is
+      // somebody's real financial history, and the review notes describe how to
+      // attack this app. Neither may travel in a repository that gets published.
+      for (final String pattern in <String>[
+        '*.sqlite',
+        '*.db',
+        'local.properties',
+        'docs/audit/',
+      ]) {
+        expect(
+          gitignore,
+          contains(pattern),
+          reason:
+              'SECURITY: root .gitignore must cover $pattern. The android/ '
+              '.gitignore only matches paths inside android/, so a file dropped '
+              'elsewhere in the tree would be committed.',
+        );
+      }
     });
     test('release signing must also be enforced on the packaging task', () {
       final String gradle = _kotlinCode(
@@ -277,9 +298,9 @@ void main() {
             'moves data between the same app on two platforms, and only to the '
             'counterpart named in <platform-specific-params>; this app is '
             'Android-only, so no counterpart can match and nothing would be '
-            'exported. Adding the section would also join a path that platforms '
-            'gating it on opt-in currently keep the app out of. If an iOS version '
-            'is ever built, add the section then and update this test deliberately.',
+            'exported. Adding the section would also declare a counterpart that '
+            'does not exist. If an iOS version is ever built, add the section then '
+            'and update this test deliberately.',
       );
     });
 
@@ -583,8 +604,8 @@ void main() {
   // The Gradle assertions read comments, and build.gradle.kts really does contain
   // the construct that _kotlinCode's doc comment names as its blind spot:
   // `"android/key.properties has no value for: ${blank.joinToString(", ")}."`. The
-  // token-forbidding check therefore classifies whole lines instead, so no
-  // character-level parsing sits between a defect and the assertion that must see it.
+  // token-forbidding check therefore asks two classifiers with opposite blind spots,
+  // so neither a character-level nor a line-level mistake can hide a defect alone.
   group('_codeLines comment stripping', () {
     test('is not fooled by a string template holding a comment marker', () {
       const String source = r'''
@@ -616,6 +637,54 @@ void main() {
       expect(code.join('\n'), isNot(contains('debug')));
       expect(code.join('\n'), contains('val live = 1'));
       expect(code.join('\n'), contains('val alsoLive = 2'));
+    });
+  });
+
+  // The token-forbidding check asks two classifiers because they fail in opposite
+  // directions. Each of the first three tests feeds it a source that ONE of them
+  // misses, so dropping either half of the pair turns exactly one of these red.
+  group('debug signing detection', () {
+    test('catches a token behind a leading block comment', () {
+      // The line view discards this line whole: its left edge is a block comment, so
+      // the line is dropped before the closing marker can matter. The character view
+      // keeps whatever follows the closing marker, so the pair still sees it.
+      const String source =
+          '/* release */ signingConfig = signingConfigs["debug"]\n';
+
+      expect(_debugSigningOffenders(source), hasLength(1));
+    });
+
+    test('catches a token after a block comment opened inside a string', () {
+      // The line view turns block-comment mode on here and then swallows the real
+      // assignment below it. The character view understands triple-quoted strings and
+      // does not, so the pair still sees it.
+      const String source = r'''
+        val msg = """
+        /* x
+        """
+        signingConfig = signingConfigs["debug"]
+      ''';
+
+      expect(_debugSigningOffenders(source), hasLength(1));
+    });
+
+    test('catches a token a string template hides from the character view', () {
+      // The reverse case, and the one that made this pair necessary: the quote inside
+      // the template ends the string early, the `//` inside it then starts a comment,
+      // and the assignment is stripped away. The line view never looks inside the
+      // line, so it still sees it. Before the pair existed, this source passed the
+      // whole suite and a debug-signed release could have shipped.
+      const String source =
+          'val demo = "\${listOf("a//b")}"; signingConfig = signingConfigs["debug"]\n';
+
+      expect(_debugSigningOffenders(source), hasLength(1));
+    });
+
+    test('says nothing when the only mention is commented out', () {
+      const String source =
+          '// signingConfig = signingConfigs["debug"]\nval a = 1\n';
+
+      expect(_debugSigningOffenders(source), isEmpty);
     });
   });
 
@@ -696,13 +765,19 @@ String _rulesSection(String name) =>
 
 /// Returns the lines of [source] that are not inside a comment.
 ///
-/// A line-oriented view, used where a character-level stripper could only fail in
-/// the unsafe direction. Here a line is either commented out or it is not, and no
-/// construct on an earlier line can swallow it.
+/// A line-oriented view. A trailing comment on a line of code keeps that line, so a
+/// mention there is flagged as well: this helper exists to forbid a token, and a
+/// false alarm is cheaper than a missed signing regression.
 ///
-/// A trailing comment on a line of code keeps that line, so a mention there is
-/// flagged as well. That is the deliberate direction: this helper exists to forbid
-/// a token, and a false alarm is cheaper than a missed signing regression.
+/// This is not a lexer and has blind spots of its own, which is why
+/// [_debugSigningOffenders] does not rely on it alone:
+///
+///   * A line whose left edge is a block comment is dropped whole, even when live
+///     code follows the closing marker on that same line.
+///   * A block comment opened inside a string turns comment mode on and swallows
+///     the real lines after it.
+///
+/// Both directions are pinned by tests in this file.
 List<String> _codeLines(String source) {
   final List<String> code = <String>[];
   bool inBlockComment = false;
@@ -724,6 +799,30 @@ List<String> _codeLines(String source) {
   }
 
   return code;
+}
+
+/// Returns every way [source] breaks the rule that no debug signing config may be
+/// named. An empty list means the rule holds.
+///
+/// Deliberately asks two classifiers, because they fail in opposite directions and
+/// a token has to survive both to be ruled out:
+///
+///   * [_codeLines] drops a live line whose left edge is a block comment, and can
+///     swallow the lines after a block comment opened inside a string.
+///   * [_kotlinCode] can hide a token behind a string template holding a quote,
+///     which build.gradle.kts really does contain.
+List<String> _debugSigningOffenders(String source) {
+  final String withoutComments = _kotlinCode(source);
+
+  return <String>[
+    ..._codeLines(source)
+        .where((String line) => line.contains('"debug"'))
+        .map((String line) => line.trim()),
+    ...withoutComments
+        .split('\n')
+        .where((String line) => line.contains('"debug"'))
+        .map((String line) => 'survived comment stripping: ${line.trim()}'),
+  ];
 }
 
 
