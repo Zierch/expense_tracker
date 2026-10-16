@@ -24,7 +24,7 @@ allow installation from your browser or file manager when prompted.
 > Drive export is limited. To be added, open an issue with the Google address
 > you want to use. The list is capped at 100 accounts by Google.
 
-Requires Android 6.0 or newer.
+Requires Android 7.0 or newer (minSdk 24).
 
 ## Features
 

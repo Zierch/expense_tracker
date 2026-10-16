@@ -21,21 +21,20 @@ void main() {
         // for release builds. Removing that line is what closes the hole: a debug-signed
         // APK is per-machine and recreatable, so a rebuild from anywhere else forces
         // every user to uninstall, deleting their financial database in the process.
+        //
+        // Asserted across the whole file rather than as a substring *sequence*, because
+        // a sequence check also passes once the surrounding lines are reordered -- which
+        // is exactly how this regression would arrive. Nothing here has a legitimate
+        // reason to name the debug signing config: the `profile` build type that Flutter
+        // adds inherits it implicitly.
         expect(
           gradle,
-          isNot(
-            stringContainsInOrder([
-              'buildTypes',
-              'release',
-              'signingConfig = signingConfigs.getByName("debug")',
-            ]),
-          ),
+          isNot(contains('getByName("debug")')),
           reason:
-              'SECURITY: release build type must NOT assign signingConfig = '
-              'signingConfigs.getByName("debug"), because that would sign the '
-              'shared APK with the debug keystore, forcing users to uninstall on '
-              'any rebuild from a different machine, which deletes their financial '
-              'database.',
+              'SECURITY: nothing in build.gradle.kts may reference the debug signing '
+              'config. If release used it, the shared APK would be signed with a '
+              'per-machine keystore, so rebuilding anywhere else would force every '
+              'user to uninstall, which deletes their financial database.',
         );
       },
     );
@@ -56,14 +55,42 @@ void main() {
       );
     });
 
-    test('key.properties must be git-ignored and not committed', () {
+    test('key.properties must be git-ignored, never committed', () {
+      // Existing on disk is fine and expected: anybody who follows
+      // README.md -> "Building a release APK" keeps a real file there, and
+      // their `flutter test` run has to stay green. The dangerous state is a
+      // *tracked* key.properties, so ask git rather than the filesystem.
+      final String gitignore = File('.gitignore').readAsStringSync();
       expect(
-        File('android/key.properties').existsSync(),
-        isFalse,
+        gitignore,
+        contains('key.properties'),
         reason:
-            'SECURITY: android/key.properties (containing the signing keystore '
-            'password) must never be committed; it is git-ignored and must stay '
-            'on disk only on machines that build releases.',
+            'SECURITY: the root .gitignore must cover key.properties; android/'
+            '.gitignore only matches paths inside android/, so without this a '
+            'signing password could be committed.',
+      );
+
+      if (!Directory('.git').existsSync()) return;
+
+      // Exit 0 means git will ignore the path. Exit 1 means it will not, which
+      // covers both "untracked and unignored" and "already tracked", since
+      // ignore rules never apply to a file git already tracks.
+      final ProcessResult result;
+      try {
+        result = Process.runSync(
+          'git',
+          <String>['check-ignore', '-q', 'android/key.properties'],
+        );
+      } on ProcessException {
+        return; // git is not installed here; there is nothing to ask.
+      }
+
+      expect(
+        result.exitCode,
+        isNot(1),
+        reason:
+            'SECURITY: git does not ignore android/key.properties, so the '
+            'signing keystore password can be committed by accident.',
       );
     });
 
@@ -78,6 +105,37 @@ void main() {
             'and key.properties. The android/.gitignore only covers paths *within* '
             'android/, so a keystore dropped anywhere else in the tree would sail '
             'past it; the root patterns catch that.',
+      );
+    });
+    test('release signing must also be enforced on the packaging task', () {
+      final String gradle =
+          File('android/app/build.gradle.kts').readAsStringSync();
+
+      // The friendly check keys off the requested task *name*, which is not
+      // enough on its own: `./gradlew assemble`, `./gradlew build` and Gradle's
+      // camel-case abbreviations (`aR`) all reach the release variant without
+      // the string "Release" ever appearing in startParameter.taskNames. The
+      // guard that actually holds therefore hangs off the packaging task, which
+      // exists precisely when a release artifact is about to be produced.
+      expect(
+        gradle,
+        contains('tasks.configureEach'),
+        reason:
+            'SECURITY: without a guard on the packaging task itself, a release '
+            'build requested as `assemble`, `build` or `aR` walks past the '
+            'task-name check and yields an unsigned artifact.',
+      );
+      expect(
+        gradle,
+        contains('startsWith("package")'),
+        reason: 'SECURITY: the packaging-task guard must target the package* tasks.',
+      );
+      expect(
+        gradle,
+        contains('doFirst'),
+        reason:
+            'SECURITY: the packaging-task guard must run before the task body, '
+            'not merely during configuration.',
       );
     });
   });
@@ -98,83 +156,67 @@ void main() {
       );
     });
 
-    test('data_extraction_rules must exclude root domain from cloud-backup',
+    test('data_extraction_rules must exclude every domain from cloud-backup',
         () {
-      final String rules =
-          File('android/app/src/main/res/xml/data_extraction_rules.xml')
-              .readAsStringSync();
+      final String cloudBackup = _xmlSection(
+        File('android/app/src/main/res/xml/data_extraction_rules.xml')
+            .readAsStringSync(),
+        'cloud-backup',
+      );
 
       expect(
-        rules,
-        stringContainsInOrder([
-          '<cloud-backup>',
-          'exclude domain="root"',
-        ]),
+        cloudBackup,
+        isNotEmpty,
         reason:
-            'SECURITY: data_extraction_rules.xml must have a cloud-backup section '
-            'that excludes domain="root". On Android 12+, allowBackup=false may '
-            'still leave cloud backup enabled on some devices, so this section '
-            'closes that path.',
+            'SECURITY: data_extraction_rules.xml must contain a <cloud-backup> '
+            'section. An absent section does not mean "nothing is backed up": '
+            'Google documents that a missing section leaves that mode fully '
+            'enabled.',
       );
-    });
-
-    test('data_extraction_rules must exclude database domain from cloud-backup',
-        () {
-      final String rules =
-          File('android/app/src/main/res/xml/data_extraction_rules.xml')
-              .readAsStringSync();
-
-      expect(
-        rules,
-        stringContainsInOrder([
-          '<cloud-backup>',
-          'exclude domain="database"',
-        ]),
-        reason:
-            'SECURITY: data_extraction_rules.xml cloud-backup section must '
-            'exclude domain="database" to block backup of the SQLite database.',
-      );
+      for (final String domain in <String>['root', 'database']) {
+        expect(
+          cloudBackup,
+          contains('exclude domain="$domain"'),
+          reason:
+              'SECURITY: the cloud-backup section must exclude domain="$domain". '
+              'This is asserted per section on purpose: a check that searched the '
+              'whole file would also be satisfied by the device-transfer section, '
+              'so deleting an exclusion from one section while the other still '
+              'had it would silently pass. The database domain is the SQLite file '
+              'holding the user\'s financial records.',
+        );
+      }
     });
 
     test(
-      'data_extraction_rules must exclude root domain from device-transfer',
-      () {
-        final String rules =
-            File('android/app/src/main/res/xml/data_extraction_rules.xml')
-                .readAsStringSync();
-
-        expect(
-          rules,
-          stringContainsInOrder([
-            '<device-transfer>',
-            'exclude domain="root"',
-          ]),
-          reason:
-              'SECURITY: data_extraction_rules.xml must have a device-transfer '
-              'section that excludes domain="root". Device-to-device transfer is '
-              'an Android 12+ feature that can leave databases accessible even '
-              'when allowBackup=false; this section blocks that path.',
-        );
-      },
-    );
-
-    test('data_extraction_rules must exclude database domain from device-transfer',
+        'data_extraction_rules must exclude every domain from device-transfer',
         () {
-      final String rules =
-          File('android/app/src/main/res/xml/data_extraction_rules.xml')
-              .readAsStringSync();
+      final String deviceTransfer = _xmlSection(
+        File('android/app/src/main/res/xml/data_extraction_rules.xml')
+            .readAsStringSync(),
+        'device-transfer',
+      );
 
       expect(
-        rules,
-        stringContainsInOrder([
-          '<device-transfer>',
-          'exclude domain="database"',
-        ]),
+        deviceTransfer,
+        isNotEmpty,
         reason:
-            'SECURITY: data_extraction_rules.xml device-transfer section must '
-            'exclude domain="database" to block transfer of the SQLite database.',
+            'SECURITY: data_extraction_rules.xml must contain a <device-transfer> '
+            'section, because Google documents that on Android 12+ on some '
+            'manufacturers\' devices android:allowBackup="false" stops cloud '
+            'backup but still permits device-to-device transfer.',
       );
+      for (final String domain in <String>['root', 'database']) {
+        expect(
+          deviceTransfer,
+          contains('exclude domain="$domain"'),
+          reason:
+              'SECURITY: the device-transfer section must exclude domain="$domain"; '
+              'this is the path that allowBackup alone leaves open on Android 12+.',
+        );
+      }
     });
+
   });
 
   group('OAuth identity and configuration', () {
@@ -272,25 +314,41 @@ void main() {
       );
     });
 
-    test('serverClientId must remain the placeholder, not a real client ID',
+    test('serverClientId must be the placeholder or a well-formed client ID',
         () {
       final String googleConfig =
           File('lib/data/services/google_config.dart').readAsStringSync();
 
-      // A real web client ID is roughly 70 chars and ends with
-      // .apps.googleusercontent.com. The placeholder is much shorter.
-      final RegExp clientId = RegExp(
-          r"serverClientId\s*=\s*'([^']+)'");
+      final RegExp clientId = RegExp(r"serverClientId\s*=\s*'([^']+)'");
       final String? match = clientId.firstMatch(googleConfig)?.group(1);
 
       expect(
         match,
-        startsWith('PASTE_'),
+        isNotNull,
+        reason: 'GoogleConfig must declare serverClientId, even as a placeholder.',
+      );
+
+      // Committing the real client ID is intentional and not a defect: the APK
+      // on the Releases page has to sign in for the people it is handed to, and
+      // a client ID is a public identifier rather than a credential. What must
+      // never appear is the *secret* printed next to it in the Console, which
+      // is asserted separately below.
+      if (match!.startsWith('PASTE_')) return;
+
+      expect(
+        match,
+        endsWith('.apps.googleusercontent.com'),
         reason:
-            'SECURITY: GoogleConfig.serverClientId must not contain a real OAuth '
-            'client ID (a real web client ID is ~70 chars and ends with '
-            '.apps.googleusercontent.com). The placeholder prevents accidental '
-            'commits of real credentials.',
+            'SECURITY: serverClientId must hold a *Web application* client ID, '
+            'which ends in .apps.googleusercontent.com. An Android client ID, or '
+            'a truncated paste, produces clientConfigurationError at sign-in.',
+      );
+      expect(
+        match.length,
+        greaterThan(40),
+        reason:
+            'GoogleConfig.serverClientId looks truncated; a real web client ID '
+            'is around 70 characters long.',
       );
     });
 
@@ -315,4 +373,17 @@ void main() {
       );
     });
   });
+}
+
+
+/// Returns the contents of the first `<name> ... </name>` pair in [xml], or an
+/// empty string when that section is absent.
+///
+/// Section-scoped assertions matter here: searching the whole document would
+/// happily match a rule that lives in the *other* section.
+String _xmlSection(String xml, String name) {
+  final int start = xml.indexOf('<$name>');
+  final int end = xml.indexOf('</$name>');
+  if (start < 0 || end < start) return '';
+  return xml.substring(start, end);
 }

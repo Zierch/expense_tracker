@@ -252,7 +252,7 @@ class GoogleDriveService {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw BackupException(
-        'Upload ke Google Drive gagal (HTTP ${response.statusCode}).\n'
+        'Upload to Google Drive failed (HTTP ${response.statusCode}).\n'
         '${_extractErrorMessage(response.body)}',
       );
     }

@@ -22,6 +22,11 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   DateTime _month = DateTime.now();
   bool _busy = false;
   String? _error;
+
+  /// Title shown above [_error]. It is set by [_run], because a single error
+  /// slot serves sign-in, export, sign-out and disconnect alike, and reporting
+  /// a failed disconnect under the heading "Export failed" would be wrong.
+  String _errorTitle = 'Export failed';
   String? _hint;
   DriveUploadResult? _result;
 
@@ -137,7 +142,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           const SizedBox(height: 12),
           _buildNotice(
             icon: Icons.error_outline,
-            title: 'Sign-in failed',
+            title: _errorTitle,
             message: _error!,
             tone: theme.colorScheme.error,
           ),
@@ -270,7 +275,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           const SizedBox(height: 12),
           _buildNotice(
             icon: Icons.error_outline,
-            title: 'Export failed',
+            title: _errorTitle,
             message: _error!,
             tone: theme.colorScheme.error,
           ),
@@ -425,30 +430,39 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   // ---------------------------------------------------------------------------
 
   Future<void> _handleSignIn() async {
-    await _run(() async {
-      await _service.signIn();
-    });
+    await _run(
+      () async {
+        await _service.signIn();
+      },
+      errorTitle: 'Sign-in failed',
+    );
   }
 
   Future<void> _handleSignOut() async {
-    await _run(() async {
-      await _service.signOut();
-      if (mounted) {
-        setState(() => _result = null);
-      }
-    });
+    await _run(
+      () async {
+        await _service.signOut();
+        if (mounted) {
+          setState(() => _result = null);
+        }
+      },
+      errorTitle: 'Sign out failed',
+    );
   }
 
   Future<void> _handleDisconnect() async {
     final bool confirmed = await _confirmDisconnect();
     if (!confirmed || !mounted) return;
 
-    await _run(() async {
-      await _service.disconnect();
-      if (mounted) {
-        setState(() => _result = null);
-      }
-    });
+    await _run(
+      () async {
+        await _service.disconnect();
+        if (mounted) {
+          setState(() => _result = null);
+        }
+      },
+      errorTitle: 'Disconnect failed',
+    );
   }
 
   /// Revoking access means the next export shows Google's consent screen again,
@@ -508,10 +522,17 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   }
 
   /// Runs [action] with the busy flag and error banner wired up.
-  Future<void> _run(Future<void> Function() action) async {
+  ///
+  /// [errorTitle] names the operation in the failure banner, so a user reading
+  /// it can tell which action actually failed.
+  Future<void> _run(
+    Future<void> Function() action, {
+    String errorTitle = 'Export failed',
+  }) async {
     setState(() {
       _busy = true;
       _error = null;
+      _errorTitle = errorTitle;
       _hint = null;
       _result = null;
     });

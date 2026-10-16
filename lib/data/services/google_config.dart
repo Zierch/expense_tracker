@@ -1,7 +1,7 @@
 /// Configuration for the Google sign-in / Google Drive backup integration.
 ///
 /// Everything here is filled in from the Google Cloud Console. See the
-/// "Google Drive backup setup" section in README.md for the step-by-step guide.
+/// "Using your own Google OAuth client" section in README.md for the guide.
 class GoogleConfig {
   /// OAuth client ID of type **Web application**.
   ///
