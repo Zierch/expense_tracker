@@ -12,11 +12,20 @@
      false disables cloud-based backup and restore (such as Google Drive backups)
      but doesn't disable device-to-device transfers for the app."
 
-  Every domain is therefore excluded from both transfer modes explicitly, and
-  every domain is listed rather than relying on the root domain's recursion, so
-  the intent does not depend on how the backup engine walks its domains. Note
-  that a missing section means "fully enabled", which is why neither section is
-  omitted.
+  Every domain is therefore excluded from cloud backup and device-to-device
+  transfer explicitly, and every domain is listed rather than relying on the root
+  domain's recursion, so the intent does not depend on how the backup engine
+  walks its domains. A missing section is not a safe default for these two: omit
+  one and that mode is fully enabled, which is why neither is omitted.
+
+  Android 16 QPR2 (API level 36.1) added a third mode, cross-platform transfer to
+  iOS, configured with a <cross-platform-transfer> child element. That one works
+  the other way round: the system only lets an app take part if it opts in here,
+  and opting in additionally requires a <platform-specific-params> element naming
+  the counterpart iOS app's bundleId and teamId. This app is Android-only and has
+  no iOS counterpart, so it deliberately does not opt in, and that element is
+  absent on purpose. Do not add one: doing so would enrol this app in a transfer
+  path it has no reason to use.
 
   Devices running Android 11 or lower need nothing further here: device-to-device
   transfer is an Android 12 feature, and allowBackup="false" fully disables cloud

@@ -185,12 +185,22 @@ class GoogleDriveService {
   /// Files already exported are left where they are. Losing access is not the
   /// same as asking for the backups to be deleted, so nothing here removes
   /// them, and the UI must not imply otherwise.
+  ///
+  /// The SDK reports a sign-out *before* it attempts the revoke, so a failure
+  /// here can leave the user signed out on this device while the grant is still
+  /// live. The error therefore says so rather than reporting a bare failure, and
+  /// points at Google's own page for withdrawing the access by hand.
   Future<void> disconnect() async {
     await initialize();
     try {
       await _googleSignIn.disconnect();
     } on GoogleSignInException catch (error) {
-      throw BackupException(_describeSignInError(error));
+      throw BackupException(
+        '${_describeSignInError(error)} You are now signed out on this '
+        'device, but the access you granted may still be live. To withdraw it '
+        'for certain, remove Expense Tracker at '
+        'https://myaccount.google.com/permissions.',
+      );
     }
     _account = null;
   }

@@ -10,9 +10,11 @@ read, not to be survived.
 
 The app has no servers, no account system of its own, no analytics, no crash
 reporting, and no advertising. Every transaction you enter stays in a private
-database on your phone. The only time anything leaves your device is when you
-yourself tap **Backup to Google Drive** for a specific month — and it goes to
-_your_ Google Drive, not to the developer.
+database on your phone. The only time the app itself sends anything off your
+device is when you yourself tap **Backup to Google Drive** for a specific month —
+and it goes to _your_ Google Drive, not to the developer. Android's own
+system-level backup is switched off for this app, including the newer
+cross-platform transfer path; see "Android Auto Backup is turned off" below.
 
 The developer of this app cannot see your data. There is no backend that could
 receive it.
@@ -49,7 +51,9 @@ per-category totals. Notes you typed are included verbatim, so please do not put
 information in a note that you would not want stored in your Google Drive.
 
 Nothing is uploaded on a schedule, in the background, or automatically. If you
-never tap the export action, the app never contacts Google Drive at all.
+never tap the export action, the app never contacts Google Drive at all. Signing
+in reaches Google's sign-in service, which is a different thing from your
+Drive.
 
 Re-exporting the same month replaces the previous file rather than adding a
 second copy.
@@ -65,31 +69,49 @@ second copy.
 ## Google Sign-In and what the app can access
 
 Google Drive backup requires signing in with a Google account. The app requests a
-single permission, the `drive.file` scope. This is deliberately the narrowest
-Drive permission Google offers:
+single permission, the `drive.file` scope. It is deliberately narrow — the app
+gets no access to anything it did not create itself:
 
 - The app can see and manage **only the files it created itself**.
 - The app **cannot** read, list, modify, or delete any other file in your Drive —
   not your documents, not your photos, not files made by other apps.
 
 Your Google account credentials are handled entirely by Google's own Sign-In SDK
-on your device. The app never sees your password, and it does not store your
-access token on disk.
+on your device. The app never sees your password, and it keeps no copy of your
+access token in its own storage; Google's SDK manages the session on your
+device.
+
+## Being a test user
+
+Google sign-in for this app is in _Testing_ mode, which is how a small app avoids
+Google's brand-verification process. That mode only works for accounts the
+developer has listed as test users, so to use Drive backup you have to tell the
+developer which Google address to add, and the developer will then be able to see
+that address. It is used to grant access and for nothing else: no mailing list,
+no profiling, and no sharing. Ask through the issue tracker if you want it
+removed once you no longer need access.
 
 ## Android permissions
 
 - `INTERNET` — required to reach Google Drive when you export.
-- `USE_BIOMETRIC` and `USE_FINGERPRINT` — these are declared by Android's
-  Credential Manager library, which Google's Sign-In SDK depends on. This app
-  itself does not use biometrics, and it never asks you for a fingerprint.
+- `USE_BIOMETRIC` and `USE_FINGERPRINT` — these come from the `androidx.biometric`
+  library, which Google's Sign-In SDK pulls in for its credential handling. This
+  app itself does not use biometrics, and it never asks you for a fingerprint.
   The permissions are install-time only and show no prompt.
 
 ## Android Auto Backup is turned off
 
 Android can normally copy app data to your Google account as part of Auto Backup.
-This app disables that (`android:allowBackup="false"`), so your financial
-database is never copied into Google's backup service behind your back. The
-Backup screen is the one supported way to get your data off the device.
+This app disables that (`android:allowBackup="false"`) and, on Android 12 and
+above, also excludes every data domain from both cloud backup and
+device-to-device transfer in its `data_extraction_rules.xml`. Your financial
+database is therefore not copied into Google's backup service, and a
+device-to-device transfer to a new phone does not carry it either. The Backup
+screen is the one supported way to get your data off the device.
+
+Android 16 QPR2 (API level 36.1) added a third route, cross-platform transfer to
+iOS, which apps must opt into explicitly in that same file. This app is
+Android-only and does not opt in, so it takes no part in that route either.
 
 ## Revoking access
 
@@ -108,8 +130,10 @@ you want those gone, delete the `Expense Tracker` folder in your Drive yourself.
 - **On your device:** uninstall the app, or use Android's _Clear data_ option.
   This erases the local database permanently.
 - **In your Google Drive:** delete the `Expense Tracker` folder, or the individual
-  `expense-tracker-YYYY-MM.json` files. The app cannot do this for you, because
-  that would require a broader Drive permission than the one it asks for.
+  `expense-tracker-YYYY-MM.json` files, yourself. The app is able to delete the
+  files it created — the `drive.file` scope covers managing them — but it never
+  does so on its own, because withdrawing the app's access is not the same as
+  asking it to erase your backups.
 
 ## Children
 

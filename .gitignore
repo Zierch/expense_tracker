@@ -44,6 +44,12 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Gradle writes its own reports under android/, and the /build/ rule above is
+# anchored to the repository root so it does not reach them. A Gradle problems
+# report was committed once because of that gap.
+/android/build/
+/android/app/build/
+
 # Widget Preview related
 .widget_preview/
 
