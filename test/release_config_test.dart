@@ -9,6 +9,27 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
+/// Every data domain the extraction rules format documents.
+///
+/// Both sections of the rules file list all nine rather than relying on the root
+/// domain's recursion, so the intent does not depend on how the backup engine
+/// walks its domains.
+const List<String> _allDomains = <String>[
+  'root',
+  'file',
+  'database',
+  'sharedpref',
+  'external',
+  'device_root',
+  'device_file',
+  'device_database',
+  'device_sharedpref',
+];
+
+/// The data extraction rules, which decide what Android may copy off the device.
+const String _rulesPath =
+    'android/app/src/main/res/xml/data_extraction_rules.xml';
+
 void main() {
   group('release build signing', () {
     test(
@@ -23,19 +44,20 @@ void main() {
         // APK is per-machine and recreatable, so a rebuild from anywhere else forces
         // every user to uninstall, deleting their financial database in the process.
         //
-        // Asserted across the whole file rather than as a substring *sequence*, because
-        // a sequence check also passes once the surrounding lines are reordered -- which
-        // is exactly how this regression would arrive. Nothing here has a legitimate
-        // reason to name the debug signing config: the `profile` build type that Flutter
-        // adds inherits it implicitly.
+        // Forbidden as the quoted token rather than as one call shape, because Gradle
+        // can reach a signing config through getByName("debug") or signingConfigs["debug"],
+        // and checking only the first spelling leaves the second as a way back in. The
+        // quoted string "debug" appears nowhere else in this file's code, so the token is
+        // specific to signing configs; the `profile` build type that Flutter adds inherits
+        // the debug config implicitly and never names it.
         expect(
           gradle,
-          isNot(contains('getByName("debug")')),
+          isNot(contains('"debug"')),
           reason:
               'SECURITY: nothing in build.gradle.kts may reference the debug signing '
-              'config. If release used it, the shared APK would be signed with a '
-              'per-machine keystore, so rebuilding anywhere else would force every '
-              'user to uninstall, which deletes their financial database.',
+              'config, in any spelling. If release used it, the shared APK would be '
+              'signed with a per-machine keystore, so rebuilding anywhere else would '
+              'force every user to uninstall, which deletes their financial database.',
         );
       },
     );
@@ -54,6 +76,24 @@ void main() {
             'SECURITY: release build must load signing credentials from '
             'android/key.properties (git-ignored); without this, the release '
             'variant falls back to unsigned or debug-signed.',
+      );
+    });
+
+    test('the release build type must be given the release signing config', () {
+      final String gradle = _kotlinCode(
+        File('android/app/build.gradle.kts').readAsStringSync(),
+      );
+
+      // Not naming a debug config is only half of the invariant. The release build
+      // type also has to be handed the release config, or it ships unsigned: users
+      // get an APK they cannot upgrade without uninstalling first, which deletes
+      // their financial database.
+      expect(
+        gradle,
+        contains('signingConfig = signingConfigs.getByName("release")'),
+        reason:
+            'SECURITY: the release build type must assign signingConfig = '
+            'signingConfigs.getByName("release").',
       );
     });
 
@@ -150,7 +190,7 @@ void main() {
 
       expect(
         manifest,
-        stringContainsInOrder(['android:allowBackup="false"']),
+        contains('android:allowBackup="false"'),
         reason:
             'SECURITY: AndroidManifest must set android:allowBackup="false" to '
             'prevent Android from automatically backing up the SQLite database '
@@ -159,13 +199,64 @@ void main() {
       );
     });
 
-    test('data_extraction_rules must exclude every domain from cloud-backup',
-        () {
-      final String cloudBackup = _xmlSection(
-        File('android/app/src/main/res/xml/data_extraction_rules.xml')
-            .readAsStringSync(),
-        'cloud-backup',
+    test('AndroidManifest must reference the data extraction rules file', () {
+      final String manifest =
+          File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+
+      // allowBackup="false" and the rules file do different jobs. Delete this one
+      // attribute and allowBackup="false" still stands, so the test above stays
+      // green while the device-to-device exclusion silently stops being applied --
+      // which is the Android 12+ case the rules file exists for.
+      expect(
+        manifest,
+        contains('android:dataExtractionRules="@xml/data_extraction_rules"'),
+        reason:
+            'SECURITY: AndroidManifest must point at the data extraction rules. '
+            'Without that attribute the file has no effect at all, and only '
+            'allowBackup="false" remains, which Google documents as still '
+            'permitting device-to-device transfer on Android 12+ for some '
+            'manufacturers.',
       );
+    });
+
+    test('the rules file must keep the documented root element', () {
+      final String rules = _xmlElements(File(_rulesPath).readAsStringSync());
+
+      // Android checks the root tag when it reads this file. A typo here means the
+      // whole file is ignored, and nothing the user could observe would say so.
+      expect(
+        rules,
+        contains('<data-extraction-rules>'),
+        reason:
+            'SECURITY: the root element must be <data-extraction-rules>. The '
+            'platform verifies that tag, and an unrecognised root means every '
+            'exclusion in the file is skipped.',
+      );
+    });
+
+    test('the rules file must not opt into cross-platform transfer', () {
+      final String rules = _xmlElements(File(_rulesPath).readAsStringSync());
+
+      // cloud-backup and device-transfer are enabled unless excluded, which is why
+      // both sections exist. Cross-platform transfer to iOS works the other way
+      // round: AOSP only lets an app take part if it opts in here, and opting in
+      // also requires <platform-specific-params> naming the counterpart iOS app's
+      // bundleId and teamId. This app is Android-only, so staying out is the safe
+      // state, and this assertion stops a future reader from "completing" the file
+      // by adding that section.
+      expect(
+        rules,
+        isNot(contains('cross-platform-transfer')),
+        reason:
+            'SECURITY: do not add a <cross-platform-transfer> section. It would '
+            'opt this app into transfers to iOS, and it cannot be configured '
+            'correctly without an iOS counterpart to match bundleId and teamId. '
+            'Its absence is what keeps the app out of that path.',
+      );
+    });
+
+    test('data_extraction_rules must exclude every domain from cloud-backup', () {
+      final String cloudBackup = _rulesSection('cloud-backup');
 
       expect(
         cloudBackup,
@@ -176,17 +267,21 @@ void main() {
             'Google documents that a missing section leaves that mode fully '
             'enabled.',
       );
-      for (final String domain in <String>['root', 'database']) {
+
+      // All nine documented domains, not a sample. The file lists every one so the
+      // intent does not depend on how the backup engine walks its domains, and a
+      // two-domain check would stay green with seven exclusions deleted.
+      for (final String domain in _allDomains) {
         expect(
           cloudBackup,
-          contains('exclude domain="$domain"'),
+          matches(RegExp('exclude\\s+domain="$domain"\\s+path="\\."')),
           reason:
-              'SECURITY: the cloud-backup section must exclude domain="$domain". '
-              'This is asserted per section on purpose: a check that searched the '
-              'whole file would also be satisfied by the device-transfer section, '
-              'so deleting an exclusion from one section while the other still '
-              'had it would silently pass. The database domain is the SQLite file '
-              'holding the user\'s financial records.',
+              'SECURITY: the cloud-backup section must exclude domain="$domain" '
+              'with path=".". Without that exclusion the domain is backed up to '
+              'Google Drive. This is asserted per section on purpose: a check that '
+              'searched the whole file would also be satisfied by the '
+              'device-transfer section, so deleting an exclusion from one section '
+              'while the other still had it would pass.',
         );
       }
     });
@@ -194,11 +289,7 @@ void main() {
     test(
         'data_extraction_rules must exclude every domain from device-transfer',
         () {
-      final String deviceTransfer = _xmlSection(
-        File('android/app/src/main/res/xml/data_extraction_rules.xml')
-            .readAsStringSync(),
-        'device-transfer',
-      );
+      final String deviceTransfer = _rulesSection('device-transfer');
 
       expect(
         deviceTransfer,
@@ -209,17 +300,18 @@ void main() {
             'manufacturers\' devices android:allowBackup="false" stops cloud '
             'backup but still permits device-to-device transfer.',
       );
-      for (final String domain in <String>['root', 'database']) {
+
+      for (final String domain in _allDomains) {
         expect(
           deviceTransfer,
-          contains('exclude domain="$domain"'),
+          matches(RegExp('exclude\\s+domain="$domain"\\s+path="\\."')),
           reason:
-              'SECURITY: the device-transfer section must exclude domain="$domain"; '
-              'this is the path that allowBackup alone leaves open on Android 12+.',
+              'SECURITY: the device-transfer section must exclude domain="$domain" '
+              'with path="."; this is the path that allowBackup alone leaves open '
+              'on Android 12+.',
         );
       }
     });
-
   });
 
   group('OAuth identity and configuration', () {
@@ -316,6 +408,88 @@ void main() {
             'to the user\'s entire Drive and trigger Google\'s restricted-scope '
             'verification process.',
       );
+    });
+
+    test('the scopes sent to Google must be exactly the declared one', () {
+      final String service =
+          File('lib/data/services/google_drive_service.dart').readAsStringSync();
+
+      // google_config.dart declaring a narrow scope proves nothing on its own. What
+      // the user is actually asked to grant is whatever the service hands to the
+      // SDK, so pin the declaration and every call site together.
+      expect(
+        service,
+        matches(
+          RegExp(r'_scopes\s*=\s*<String>\[\s*GoogleConfig\.driveFileScope\s*\]'),
+        ),
+        reason:
+            'SECURITY: the scope list must be built from GoogleConfig.driveFileScope, '
+            'so the scope that is requested is the scope that is declared.',
+      );
+
+      // Only *invocations* are inspected, which the leading dot identifies. The
+      // service also declares its own private _authorizationHeaders() helper, and
+      // matching every occurrence of these names counts that definition and its
+      // call sites, which decide nothing about scope. The calls that matter are
+      // the ones made on the authorization client.
+      final RegExp scopeCalls = RegExp(
+        r'\.(authorizationForScopes|authorizeScopes|authorizationHeaders)\(([^)]*)\)',
+      );
+      final Iterable<RegExpMatch> calls = scopeCalls.allMatches(service);
+
+      expect(
+        calls,
+        isNotEmpty,
+        reason:
+            'SECURITY: google_drive_service.dart no longer calls a scope-taking '
+            'method on the authorization client. If the Drive integration was '
+            'rewritten, re-point this test at the new scope plumbing rather than '
+            'deleting it.',
+      );
+
+      for (final RegExpMatch call in calls) {
+        expect(
+          call.group(2)!.contains('_scopes'),
+          isTrue,
+          reason:
+              'SECURITY: every scope request must pass _scopes, but '
+              '${call.group(0)} carries its own argument list. It could ask for a '
+              'broader scope than google_config.dart declares while the check on '
+              'the constant still passed, and users would be asked to grant more '
+              'than the policy describes.',
+        );
+      }
+    });
+
+    test('no broader Drive scope may be embedded in lib/', () {
+      final List<String> dartFiles = <String>[];
+      Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((File f) => f.path.endsWith('.dart'))
+          .forEach((File f) => dartFiles.add(f.readAsStringSync()));
+      final String allDart = dartFiles.join('\n');
+
+      // Quoted literals only, so a comment is still allowed to name the scopes the
+      // app deliberately avoids.
+      for (final String scope in <String>[
+        "'https://www.googleapis.com/auth/drive'",
+        "'https://www.googleapis.com/auth/drive.readonly'",
+        "'https://www.googleapis.com/auth/drive.appdata'",
+        "'https://www.googleapis.com/auth/drive.metadata'",
+        "'https://www.googleapis.com/auth/drive.metadata.readonly'",
+        "'https://www.googleapis.com/auth/drive.photos.readonly'",
+      ]) {
+        expect(
+          allDart,
+          isNot(contains(scope)),
+          reason:
+              'SECURITY: $scope reaches beyond the files this app created. drive.file '
+              'is the promise PRIVACY.md makes and the reason this app avoids '
+              'Google\'s restricted-scope review; a broader scope would make that '
+              'promise untrue.',
+        );
+      }
     });
 
     test('serverClientId must be the placeholder or a well-formed client ID',
@@ -440,6 +614,18 @@ String _xmlSection(String xml, String name) {
   if (start < 0 || end < start) return '';
   return xml.substring(start, end);
 }
+
+/// Returns [xml] with its comment blocks removed.
+///
+/// The rules file documents its own decisions in XML comments, and an assertion
+/// about what the file *declares* must not be satisfiable by prose: a comment can
+/// name an element that is not there, or hide one that is.
+String _xmlElements(String xml) =>
+    xml.replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '');
+
+/// Returns the `<name>` section of the data extraction rules, comments removed.
+String _rulesSection(String name) =>
+    _xmlSection(_xmlElements(File(_rulesPath).readAsStringSync()), name);
 
 
 /// Returns [source] with Kotlin comments, and their contents, removed.
