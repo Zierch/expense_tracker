@@ -109,9 +109,10 @@ database is therefore not copied into Google's backup service, and a
 device-to-device transfer to a new phone does not carry it either. The Backup
 screen is the one supported way to get your data off the device.
 
-Android 16 QPR2 (API level 36.1) added a third route, cross-platform transfer to
-iOS, which apps must opt into explicitly in that same file. This app is
-Android-only and does not opt in, so it takes no part in that route either.
+Android 16 QPR2 (API level 36.1) added a third route, cross-platform transfer.
+It moves data between the same app on two platforms, and only to the counterpart
+named in the rules file. This app is Android-only, declares no such counterpart,
+and has no iOS version to receive anything, so that route has nothing to carry.
 
 ## Revoking access
 

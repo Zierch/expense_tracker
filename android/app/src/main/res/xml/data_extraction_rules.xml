@@ -18,14 +18,27 @@
   walks its domains. A missing section is not a safe default for these two: omit
   one and that mode is fully enabled, which is why neither is omitted.
 
-  Android 16 QPR2 (API level 36.1) added a third mode, cross-platform transfer to
-  iOS, configured with a <cross-platform-transfer> child element. That one works
-  the other way round: the system only lets an app take part if it opts in here,
-  and opting in additionally requires a <platform-specific-params> element naming
-  the counterpart iOS app's bundleId and teamId. This app is Android-only and has
-  no iOS counterpart, so it deliberately does not opt in, and that element is
-  absent on purpose. Do not add one: doing so would enrol this app in a transfer
-  path it has no reason to use.
+  Android 16 QPR2 (API level 36.1) added a third mode, cross-platform transfer,
+  configured with a <cross-platform-transfer> child element. Whether that mode is
+  on by default is read two ways and Google's own material supports both, so no
+  single reading carries the decision below.
+
+    The guide says that if there are no rules for a backup mode, that mode is
+    "fully enabled for all content". Read literally, that would cover this
+    section too. But the AOSP eligibility check admits only apps "that have
+    explicitly opted-in", and the developer blog says an app "can opt-in to
+    participate", which makes adding the element the thing that joins the path.
+
+  Either way there is nothing for it to carry. This mode moves data between the
+  same app on two platforms, and the guide makes <platform-specific-params> with
+  bundleId and teamId a required part of the section, there "to guarantee that
+  data is only transferred to the specified app on the other platform". This app
+  is Android-only, no iOS counterpart exists, and none is declared, so no
+  transfer can be matched and none happens. Adding the element would instead
+  assert a counterpart that does not exist.
+
+  Do not add one. If an iOS version is ever built, add the section then with its
+  real bundleId and teamId, and update the test that pins this file.
 
   Devices running Android 11 or lower need nothing further here: device-to-device
   transfer is an Android 12 feature, and allowBackup="false" fully disables cloud

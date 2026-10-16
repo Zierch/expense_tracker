@@ -35,9 +35,8 @@ void main() {
     test(
       'release build type must not fall back to debug keystore',
       () {
-        final String gradle = _kotlinCode(
-          File('android/app/build.gradle.kts').readAsStringSync(),
-        );
+        final String gradleSource =
+            File('android/app/build.gradle.kts').readAsStringSync();
 
         // The Flutter template ships `signingConfig = signingConfigs.getByName("debug")`
         // for release builds. Removing that line is what closes the hole: a debug-signed
@@ -46,18 +45,28 @@ void main() {
         //
         // Forbidden as the quoted token rather than as one call shape, because Gradle
         // can reach a signing config through getByName("debug") or signingConfigs["debug"],
-        // and checking only the first spelling leaves the second as a way back in. The
-        // quoted string "debug" appears nowhere else in this file's code, so the token is
-        // specific to signing configs; the `profile` build type that Flutter adds inherits
-        // the debug config implicitly and never names it.
+        // and checking only the first spelling leaves the second as a way back in.
+        //
+        // Checked line by line rather than through _kotlinCode, because this is the one
+        // assertion that forbids something, and a character-level stripper can only fail
+        // that kind of check in the unsafe direction: a string template on the same line
+        // can swallow whatever follows it, and build.gradle.kts really does contain one.
+        final List<String> offenders = _codeLines(gradleSource)
+            .where((String line) => line.contains('"debug"'))
+            .map((String line) => line.trim())
+            .toList();
+
         expect(
-          gradle,
-          isNot(contains('"debug"')),
+          offenders,
+          isEmpty,
           reason:
               'SECURITY: nothing in build.gradle.kts may reference the debug signing '
-              'config, in any spelling. If release used it, the shared APK would be '
-              'signed with a per-machine keystore, so rebuilding anywhere else would '
-              'force every user to uninstall, which deletes their financial database.',
+              'config on a live line, in any spelling. If release used it, the shared '
+              'APK would be signed with a per-machine keystore, so rebuilding anywhere '
+              'else would force every user to uninstall, which deletes their financial '
+              'database. If a build type genuinely needs the debug config named, change '
+              'this test deliberately rather than working around it. '
+              'Offending line(s): $offenders',
         );
       },
     );
@@ -112,11 +121,18 @@ void main() {
             'signing password could be committed.',
       );
 
-      if (!Directory('.git').existsSync()) return;
+      // A worktree or a submodule keeps .git as a *file* rather than a directory,
+      // so testing only for a directory would silently skip this check on exactly
+      // those checkouts.
+      final bool insideRepository =
+          Directory('.git').existsSync() || File('.git').existsSync();
+      if (!insideRepository) return;
 
       // Exit 0 means git will ignore the path. Exit 1 means it will not, which
-      // covers both "untracked and unignored" and "already tracked", since
-      // ignore rules never apply to a file git already tracks.
+      // covers both "untracked and unignored" and "already tracked", since ignore
+      // rules never apply to a file git already tracks. Anything else means the
+      // check did not run, and that has to fail too: treating "could not verify"
+      // as a pass is how a guard quietly stops guarding.
       final ProcessResult result;
       try {
         result = Process.runSync(
@@ -129,10 +145,11 @@ void main() {
 
       expect(
         result.exitCode,
-        isNot(1),
+        0,
         reason:
-            'SECURITY: git does not ignore android/key.properties, so the '
-            'signing keystore password can be committed by accident.',
+            'SECURITY: git must report android/key.properties as ignored. Exit 1 '
+            'means it is not, so the signing keystore password can be committed by '
+            'accident; any other exit code means the check itself failed to run.',
       );
     });
 
@@ -179,6 +196,14 @@ void main() {
         reason:
             'SECURITY: the packaging-task guard must run before the task body, '
             'not merely during configuration.',
+      );
+      expect(
+        gradle,
+        contains('GradleException'),
+        reason:
+            'SECURITY: the packaging-task guard must actually raise. A doFirst '
+            'block that runs but no longer throws leaves the task-name check as the '
+            'only protection, and `assemble`, `build` and `aR` all walk past it.',
       );
     });
   });
@@ -248,10 +273,13 @@ void main() {
         rules,
         isNot(contains('cross-platform-transfer')),
         reason:
-            'SECURITY: do not add a <cross-platform-transfer> section. It would '
-            'opt this app into transfers to iOS, and it cannot be configured '
-            'correctly without an iOS counterpart to match bundleId and teamId. '
-            'Its absence is what keeps the app out of that path.',
+            'SECURITY: do not add a <cross-platform-transfer> section. That route '
+            'moves data between the same app on two platforms, and only to the '
+            'counterpart named in <platform-specific-params>; this app is '
+            'Android-only, so no counterpart can match and nothing would be '
+            'exported. Adding the section would also join a path that platforms '
+            'gating it on opt-in currently keep the app out of. If an iOS version '
+            'is ever built, add the section then and update this test deliberately.',
       );
     });
 
@@ -552,6 +580,45 @@ void main() {
     });
   });
 
+  // The Gradle assertions read comments, and build.gradle.kts really does contain
+  // the construct that _kotlinCode's doc comment names as its blind spot:
+  // `"android/key.properties has no value for: ${blank.joinToString(", ")}."`. The
+  // token-forbidding check therefore classifies whole lines instead, so no
+  // character-level parsing sits between a defect and the assertion that must see it.
+  group('_codeLines comment stripping', () {
+    test('is not fooled by a string template holding a comment marker', () {
+      const String source = r'''
+        val msg = "count ${a("x//y")}"
+        signingConfig = signingConfigs["debug"]
+        // signingConfig = signingConfigs["debug"]
+      ''';
+
+      final List<String> offenders = _codeLines(source)
+          .where((String line) => line.contains('"debug"'))
+          .map((String line) => line.trim())
+          .toList();
+
+      expect(offenders, hasLength(1));
+      expect(offenders.single, contains('signingConfigs["debug"]'));
+    });
+
+    test('skips full-line comments and block comments', () {
+      const String source = '''
+        // getByName("debug")
+        val live = 1
+        /* getByName("debug")
+           still commented */
+        val alsoLive = 2
+      ''';
+
+      final List<String> code = _codeLines(source);
+
+      expect(code.join('\n'), isNot(contains('debug')));
+      expect(code.join('\n'), contains('val live = 1'));
+      expect(code.join('\n'), contains('val alsoLive = 2'));
+    });
+  });
+
   // The Gradle assertions read a file this project writes comments into, and one
   // of those comments names the very string that is being forbidden. The
   // stripping helper is therefore load-bearing, so it is tested like any other
@@ -627,6 +694,38 @@ String _xmlElements(String xml) =>
 String _rulesSection(String name) =>
     _xmlSection(_xmlElements(File(_rulesPath).readAsStringSync()), name);
 
+/// Returns the lines of [source] that are not inside a comment.
+///
+/// A line-oriented view, used where a character-level stripper could only fail in
+/// the unsafe direction. Here a line is either commented out or it is not, and no
+/// construct on an earlier line can swallow it.
+///
+/// A trailing comment on a line of code keeps that line, so a mention there is
+/// flagged as well. That is the deliberate direction: this helper exists to forbid
+/// a token, and a false alarm is cheaper than a missed signing regression.
+List<String> _codeLines(String source) {
+  final List<String> code = <String>[];
+  bool inBlockComment = false;
+
+  for (final String line in source.split('\n')) {
+    final String trimmed = line.trimLeft();
+
+    if (inBlockComment) {
+      if (trimmed.contains('*/')) inBlockComment = false;
+      continue;
+    }
+    if (trimmed.startsWith('/*')) {
+      if (!trimmed.contains('*/')) inBlockComment = true;
+      continue;
+    }
+    if (trimmed.startsWith('//')) continue;
+
+    code.add(line);
+  }
+
+  return code;
+}
+
 
 /// Returns [source] with Kotlin comments, and their contents, removed.
 ///
@@ -637,9 +736,11 @@ String _rulesSection(String name) =>
 ///
 /// This is not a Kotlin lexer. It understands line comments, block comments,
 /// escaped quotes and triple-quoted strings, which is what build.gradle.kts
-/// contains. A string template holding a quote inside a `"${...}"` expression
-/// can still mislead the string tracking, so do not lean on it for anything
-/// beyond the assertions in this file.
+/// contains. A string template holding a quote inside a `"${...}"` expression can
+/// still mislead the string tracking, which is why it is used only where stripping
+/// too much fails the test: every call site here asserts that something *is*
+/// present. The one check that forbids a token, where stripping too much would
+/// hide a defect instead of reporting one, classifies lines with [_codeLines].
 String _kotlinCode(String source) {
   final StringBuffer out = StringBuffer();
   bool inLineComment = false;

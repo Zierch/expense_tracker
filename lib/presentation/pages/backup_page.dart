@@ -415,7 +415,10 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(message, style: theme.textTheme.bodySmall),
+                  // Selectable, because a failure banner can carry the
+                  // myaccount.google.com address for withdrawing access by hand,
+                  // and a link the user cannot copy is not much of a fallback.
+                  SelectableText(message, style: theme.textTheme.bodySmall),
                 ],
               ),
             ),
