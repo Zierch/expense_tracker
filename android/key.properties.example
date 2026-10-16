@@ -1,0 +1,13 @@
+# Copy this file to android/key.properties and fill in your own values.
+#
+#   cp android/key.properties.example android/key.properties
+#
+# android/key.properties is git-ignored and must never be committed, and the
+# keystore it points at must never be committed either. Losing either one means
+# you can never ship an update to an app you already distributed.
+#
+# The path below is resolved relative to android/app/.
+storeFile=release-keystore.jks
+storePassword=CHANGE_ME
+keyAlias=expense-tracker
+keyPassword=CHANGE_ME

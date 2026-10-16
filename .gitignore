@@ -1,0 +1,81 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Widget Preview related
+.widget_preview/
+
+# ---------------------------------------------------------------------------
+# Signing material — NEVER commit these.
+# android/.gitignore already covers paths relative to android/, but a keystore
+# or key.properties dropped anywhere else in the tree would sail straight past
+# it, so repeat the patterns at the repo root.
+# ---------------------------------------------------------------------------
+*.jks
+*.keystore
+key.properties
+**/key.properties
+local.properties
+**/local.properties
+
+# ---------------------------------------------------------------------------
+# Local data — the app's SQLite database and export dumps are personal
+# financial records and must never end up in a public repository.
+# ---------------------------------------------------------------------------
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# ---------------------------------------------------------------------------
+# Internal review notes. These document attack vectors against this app and
+# are working material, not documentation meant for publication.
+# ---------------------------------------------------------------------------
+docs/audit/
+
+# Scratch notes that are deliberately never published.
+PRIVATE.md
+private/

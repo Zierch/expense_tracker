@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand splash background (dark emerald, matches the app icon) -->
+    <color name="splash_background">#0B3D2E</color>
+    <color name="ic_launcher_background">#0B3D2E</color>
+</resources>
