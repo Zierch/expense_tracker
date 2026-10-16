@@ -14,8 +14,9 @@ void main() {
     test(
       'release build type must not fall back to debug keystore',
       () {
-        final String gradle =
-            File('android/app/build.gradle.kts').readAsStringSync();
+        final String gradle = _kotlinCode(
+          File('android/app/build.gradle.kts').readAsStringSync(),
+        );
 
         // The Flutter template ships `signingConfig = signingConfigs.getByName("debug")`
         // for release builds. Removing that line is what closes the hole: a debug-signed
@@ -40,8 +41,9 @@ void main() {
     );
 
     test('release signing must load credentials from key.properties', () {
-      final String gradle =
-          File('android/app/build.gradle.kts').readAsStringSync();
+      final String gradle = _kotlinCode(
+        File('android/app/build.gradle.kts').readAsStringSync(),
+      );
 
       expect(
         gradle,
@@ -108,8 +110,9 @@ void main() {
       );
     });
     test('release signing must also be enforced on the packaging task', () {
-      final String gradle =
-          File('android/app/build.gradle.kts').readAsStringSync();
+      final String gradle = _kotlinCode(
+        File('android/app/build.gradle.kts').readAsStringSync(),
+      );
 
       // The friendly check keys off the requested task *name*, which is not
       // enough on its own: `./gradlew assemble`, `./gradlew build` and Gradle's
@@ -254,8 +257,9 @@ void main() {
     });
 
     test('no com.example placeholder must remain in Gradle config', () {
-      final String gradle =
-          File('android/app/build.gradle.kts').readAsStringSync();
+      final String gradle = _kotlinCode(
+        File('android/app/build.gradle.kts').readAsStringSync(),
+      );
 
       expect(
         gradle,
@@ -386,4 +390,65 @@ String _xmlSection(String xml, String name) {
   final int end = xml.indexOf('</$name>');
   if (start < 0 || end < start) return '';
   return xml.substring(start, end);
+}
+
+
+/// Returns [source] with Kotlin comments removed.
+///
+/// Assertions about this project's Gradle config have to test code, not prose.
+/// The header of build.gradle.kts deliberately names the template line it refuses
+/// to copy (`signingConfig = signingConfigs.getByName("debug")`), so a check run
+/// against the raw file text fails on its own explanation.
+String _kotlinCode(String source) {
+  final StringBuffer out = StringBuffer();
+  bool inLineComment = false;
+  bool inBlockComment = false;
+  bool inString = false;
+
+  for (int i = 0; i < source.length; i++) {
+    final String c = source[i];
+    final String next = i + 1 < source.length ? source[i + 1] : '';
+
+    if (inLineComment) {
+      if (c == '\n') {
+        inLineComment = false;
+        out.write(c);
+      }
+      continue;
+    }
+    if (inBlockComment) {
+      if (c == '*' && next == '/') {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (inString) {
+      out.write(c);
+      if (c == '\\') {
+        if (next.isNotEmpty) {
+          out.write(next);
+          i++;
+        }
+      } else if (c == '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (c == '/' && next == '/') {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (c == '/' && next == '*') {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (c == '"') {
+      inString = true;
+    }
+    out.write(c);
+  }
+  return out.toString();
 }
