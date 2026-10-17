@@ -141,7 +141,9 @@ Google binds an OAuth client to exactly one package name plus one signing
 certificate, so a client registered for someone else's key cannot authorise your
 build.
 
-Register your own client like this:
+A click-by-click walkthrough of the Console, with the exact package name,
+fingerprints and the file to paste the client ID into, is in
+[docs/google-cloud-setup.md](docs/google-cloud-setup.md). The short version:
 
 1. In the [Google Cloud Console](https://console.cloud.google.com/), create a
    project and enable the **Google Drive API** for it.
