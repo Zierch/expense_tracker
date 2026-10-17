@@ -189,7 +189,12 @@ devices cache the rejected response until the app is swiped away).
 
 - The consent sheet says **"Google hasn't verified this app"**. That is
   expected: they tap *Advanced* → *Go to Expense Tracker (unsafe)*. Nothing is
-  wrong, and no review is needed for the `drive.file` scope.
+  wrong, and no review is needed for the `drive.file` scope. Tapping through it
+  is only safe because the APK came from this project's Releases page — the
+  screen cannot tell this app apart from an impostor, so ask everyone to install
+  it from there and nowhere else, and to check the file against the checksums in
+  the release notes (*Verifying a download* in `README.md`). An APK forwarded
+  through a chat app has no provenance at all.
 - **100 test users maximum.** Beyond that the Testing route stops working and
   the app would need Google's verification review — deliberately out of scope
   for this app.

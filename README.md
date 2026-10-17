@@ -133,6 +133,24 @@ on every device, which is the simplest thing to share. If download size matters
 more, `flutter build apk --split-per-abi` writes one smaller APK per CPU
 architecture, and you would share the right one for each phone.
 
+## Verifying a download
+
+Nobody has to take the APK on faith: its checksum is in the release notes and
+its signing certificate is public. Before installing:
+
+```bash
+sha256sum app-release.apk                    # Windows: certutil -hashfile app-release.apk SHA256
+apksigner verify --print-certs app-release.apk
+```
+
+The certificate must report SHA-1
+`B2:F5:0E:9C:44:F5:72:4B:9E:17:B5:7B:D7:B6:A3:E6:24:F4:2C:AE`, and the checksum
+must equal the one in that release's notes. Anything else is not this project's
+APK: delete it rather than installing it, because it would be asking for the
+same Google Drive access under a name you cannot check. Install only from the
+Releases page — an APK forwarded through a chat app cannot be verified at all,
+since a rebuild by anybody else never carries this signature.
+
 ## Using your own Google OAuth client
 
 The APK on the Releases page is signed with the maintainer's key, so it works
