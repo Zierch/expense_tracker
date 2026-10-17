@@ -6,7 +6,8 @@ Google OAuth client" section in `README.md`, with the exact values for this app
 already filled in.
 
 What this gets you: the **Sign in with Google** button on the Backup page works,
-for you and for up to 100 friends you list. What it does *not* require: no custom
+for you and for up to 100 accounts you list — your own account is part of that
+cap. What it does *not* require: no custom
 domain, no hosted privacy policy, no app-verification review, no Google Play
 listing, and no server of any kind. Each person's backup is written to their own
 Google Drive.
@@ -33,7 +34,8 @@ few minutes and refresh for the block to lift.
 The two fingerprints come from the keystores this project was signed with: the
 release one is in `android/app/release-keystore.jks` (alias `expense-tracker`,
 valid to 2054-03-04), the debug one is the Android SDK's
-`%USERPROFILE%\.android\debug.keystore` (alias `androiddebugkey`, password
+`%USERPROFILE%\.android\debug.keystore` on Windows (`~/.android/debug.keystore`
+on Linux or macOS; alias `androiddebugkey`, password
 `android`) that Gradle creates on the first debug build. Re-check them any time
 with:
 
@@ -213,7 +215,7 @@ devices cache the rejected response until the app is swiped away).
 | `clientConfigurationError` at sign-in | Package name, SHA-1 or client type mismatch, an APK signed with a different key than the one registered (debug APK vs release client), or a Console change that has not propagated yet. |
 | `access_denied`, or "app is blocked" | The Google account is not in **Test users**. |
 | Sign-in succeeds, export fails with 403 | *Google Drive API* is not enabled in **this** project. |
-| Export fails with "app has not been configured" | `serverClientId` is still the placeholder, or the APK predates the paste. |
+| Backup page shows **"Google Drive is not ready"** with *"Google Client ID is not configured."* | `serverClientId` is still the placeholder, or the APK predates the paste. |
 | The backup folder is "missing" in the Drive UI | The `drive.file` scope only exposes files this app created; the folder appears after the first successful export. |
 | Drive export works for you, not for a friend | That friend's Gmail address is not on the test-user list, or they are on an older APK. |
 
