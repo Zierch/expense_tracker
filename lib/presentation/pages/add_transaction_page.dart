@@ -28,6 +28,14 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   DateTime _date = _dateOnly(DateTime.now());
   bool _isLoading = false;
 
+  /// The creation time of the row being edited, kept so an edit does not restamp it.
+  ///
+  /// Null while adding. Creation time is not a field the form owns, so until the row
+  /// arrives the page has nothing truthful to write — which is why the save button stays
+  /// disabled until this is set (see [_buildSaveButton]) and the fallback at the insert is
+  /// only ever reached while adding.
+  DateTime? _createdAt;
+
   List<Category> _categories = [];
   List<Subcategory> _subcategories = [];
 
@@ -98,6 +106,7 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
       _selectedSubcategoryId = transaction.subcategoryId;
       _noteController.text = transaction.note ?? '';
       _date = _dateOnly(transaction.date);
+      _createdAt = transaction.createdAt;
     });
     _loadCategories();
   }
@@ -312,8 +321,13 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   }
 
   Widget _buildSaveButton() {
+    // An edit cannot be saved before its row arrives: the values on screen would be the
+    // form's defaults rather than the transaction's. Disabled, rather than accepting a tap
+    // that quietly does nothing.
+    final bool canSave = widget.transactionId == null || _createdAt != null;
+
     return FilledButton.icon(
-      onPressed: _isLoading ? null : _saveTransaction,
+      onPressed: (_isLoading || !canSave) ? null : _saveTransaction,
       icon: _isLoading
           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
           : const Icon(Icons.save),
@@ -328,6 +342,11 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   Future<void> _saveTransaction() async {
     if (!_formKey.currentState!.validate() || _selectedCategoryId == null) return;
 
+    // The disabled button above is what keeps an edit from getting here without its row;
+    // this is the backstop for a future path that forgets to ask.
+    assert(widget.transactionId == null || _createdAt != null,
+        'the edit path must load the row before it can save');
+
     setState(() => _isLoading = true);
 
     try {
@@ -339,7 +358,7 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
         subcategoryId: _selectedSubcategoryId,
         note: _noteController.text.isEmpty ? null : _noteController.text,
         date: _dateOnly(_date),
-        createdAt: DateTime.now(),
+        createdAt: _createdAt ?? DateTime.now(),
       );
 
       if (widget.transactionId == null) {
