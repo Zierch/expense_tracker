@@ -40,6 +40,7 @@ Requires Android 7.0 or newer (minSdk 24).
 - Optional per-month JSON export to a `Expense Tracker` folder in your own
   Google Drive; re-exporting a month replaces its file instead of duplicating it
 - Follows your system light or dark theme
+- Pull the dashboard down to re-run the queries behind the month on screen
 - Works entirely offline
 
 ## Tech stack
@@ -217,8 +218,8 @@ flutter test
 The suite covers the monthly export format, month navigation (including the
 year-boundary arithmetic), the month boundaries themselves — the in-memory predicate
 and the SQL range, run against a real in-memory database — the transaction row widget,
-and the release-config invariants that keep signing, backup rules and the OAuth
-identity from silently regressing.
+the dashboard's pull-to-refresh, and the release-config invariants that keep
+signing, backup rules and the OAuth identity from silently regressing.
 
 The database-backed tests need a SQLite library for the *host* to load, which is a
 different build from the one the app ships: Windows uses the `winsqlite3.dll` that
