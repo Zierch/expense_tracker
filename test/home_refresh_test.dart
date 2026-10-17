@@ -183,11 +183,13 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: Scaffold(body: Text('gone'))));
       await tester.pumpAndSettle();
 
-      // The point is that a disposed provider must not crash the app; _refresh()
-      // catches and logs it
+      // A lifecycle smoke test, not proof of the `catch` in `_refresh()`: a disposed
+      // provider completes its pending futures normally instead of erroring them, so
+      // swapping that `catch` for `rethrow` still leaves this green. What it does pin is
+      // that the gesture starts (asserted above) and the page can be torn down underneath
+      // it without anything reaching the framework.
       expect(tester.takeException(), isNull,
-          reason: 'a provider disposed mid-refresh must not throw to the framework, '
-              'or the gesture would blow up the app');
+          reason: 'unmounting mid-refresh must not throw to the framework');
     },
   );
 }
