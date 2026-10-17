@@ -135,21 +135,30 @@ architecture, and you would share the right one for each phone.
 
 ## Verifying a download
 
-Nobody has to take the APK on faith: its checksum is in the release notes and
-its signing certificate is public. Before installing:
+Nobody has to take the APK on faith: the release notes carry the SHA-256 of that
+release's build, and its signing certificate is public. Before installing:
 
 ```bash
-sha256sum app-release.apk                    # Windows: certutil -hashfile app-release.apk SHA256
+sha256sum app-release.apk          # Windows: certutil -hashfile app-release.apk SHA256
 apksigner verify --print-certs app-release.apk
 ```
 
-The certificate must report SHA-1
-`B2:F5:0E:9C:44:F5:72:4B:9E:17:B5:7B:D7:B6:A3:E6:24:F4:2C:AE`, and the checksum
-must equal the one in that release's notes. Anything else is not this project's
-APK: delete it rather than installing it, because it would be asking for the
-same Google Drive access under a name you cannot check. Install only from the
-Releases page — an APK forwarded through a chat app cannot be verified at all,
-since a rebuild by anybody else never carries this signature.
+`apksigner` ships with the Android SDK's `build-tools` and needs a JDK on the
+PATH. It prints the certificate's SHA-1 lowercase and without separators, so the
+value it reports has to be `b2f50e9c44f5724b9e17b57bd7b6a3e624f42cae` — the same
+fingerprint that [docs/google-cloud-setup.md](docs/google-cloud-setup.md) shows
+colon-separated. `certutil` prints the digest too, but some Windows builds add
+spaces or change letter case, so compare digit by digit rather than pasting the
+whole line. The SHA-256 has to equal the one in that release's notes.
+Anything else is not this project's APK: delete it rather than installing it,
+because it would be asking for the same Google Drive access under a name you
+cannot check.
+
+Verifying a file is one half; knowing where it came from is the other. A
+forwarded copy of the real APK would verify fine, but nothing tells you that what
+a chat app handed you is that copy — and a rebuild by anybody else will never
+match this fingerprint at all. Install from the
+[Releases page](https://github.com/Zierch/expense_tracker/releases) only.
 
 ## Using your own Google OAuth client
 

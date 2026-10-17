@@ -46,8 +46,9 @@ keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -sto
 
 ## Steps
 
-Do all of this while signed in to the Google account that will own the app and
-receive the backups.
+Do all of this while signed in to the Google account that will own the project.
+That account runs the OAuth client on everyone's behalf; the backups themselves
+go to each user's own Drive, never to the owner's.
 
 ### 1. Create a project
 
@@ -190,10 +191,12 @@ devices cache the rejected response until the app is swiped away).
 - The consent sheet says **"Google hasn't verified this app"**. That is
   expected: they tap *Advanced* → *Go to Expense Tracker (unsafe)*. Nothing is
   wrong, and no review is needed for the `drive.file` scope. Tapping through it
-  is only safe because the APK came from this project's Releases page — the
+  is only safe because the APK came from this project's
+  [Releases page](https://github.com/Zierch/expense_tracker/releases) — the
   screen cannot tell this app apart from an impostor, so ask everyone to install
-  it from there and nowhere else, and to check the file against the checksums in
-  the release notes (*Verifying a download* in `README.md`). An APK forwarded
+  it from there and nowhere else, and to check the file against the SHA-256 in
+  the release notes
+  ([Verifying a download](../README.md#verifying-a-download)). An APK forwarded
   through a chat app has no provenance at all.
 - **100 test users maximum.** Beyond that the Testing route stops working and
   the app would need Google's verification review — deliberately out of scope
