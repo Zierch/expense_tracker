@@ -25,11 +25,22 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   int? _selectedCategoryId;
   int? _selectedSubcategoryId;
   final _noteController = TextEditingController();
-  DateTime _date = DateTime.now();
+  DateTime _date = _dateOnly(DateTime.now());
   bool _isLoading = false;
 
   List<Category> _categories = [];
   List<Subcategory> _subcategories = [];
+
+  /// Drops the time of day. The stored value is a calendar day, never an instant:
+  /// a fresh page used `DateTime.now()` while the date picker returns midnight, and
+  /// that mixture made one day behave differently depending on whether the picker
+  /// had been opened.
+  ///
+  /// Every assignment to `_date` goes through here, so the field is date-only by
+  /// construction. The call at the insert is therefore a guard against a future
+  /// assignment site rather than a conversion that is needed today.
+  static DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
 
   @override
   void initState() {
@@ -86,7 +97,7 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
       _selectedCategoryId = transaction.categoryId;
       _selectedSubcategoryId = transaction.subcategoryId;
       _noteController.text = transaction.note ?? '';
-      _date = transaction.date;
+      _date = _dateOnly(transaction.date);
     });
     _loadCategories();
   }
@@ -285,7 +296,7 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
     );
-    if (picked != null) setState(() => _date = picked);
+    if (picked != null) setState(() => _date = _dateOnly(picked));
   }
 
   Widget _buildNoteField() {
@@ -327,7 +338,7 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
         categoryId: _selectedCategoryId!,
         subcategoryId: _selectedSubcategoryId,
         note: _noteController.text.isEmpty ? null : _noteController.text,
-        date: _date,
+        date: _dateOnly(_date),
         createdAt: DateTime.now(),
       );
 

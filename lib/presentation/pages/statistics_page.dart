@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:expense_tracker/domain/entities/month_range.dart';
 import 'package:expense_tracker/domain/entities/summary_result.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
@@ -17,12 +18,18 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   DateTime _selectedMonth = DateTime.now();
   int _tabIndex = 0; // 0 = Expense, 1 = Income
 
+  /// The one month this page describes.
+  ///
+  /// The SQL totals and the in-memory buckets both derive from it, so a list and the
+  /// total above it cannot end up covering different days.
+  MonthRange get _range => MonthRange.of(_selectedMonth);
+
   @override
   Widget build(BuildContext context) {
-    final startOfMonth = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
-    final endOfMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0, 23, 59, 59);
+    final MonthRange range = _range;
 
-    final summaryAsync = ref.watch(summaryProvider(start: startOfMonth, end: endOfMonth));
+    final summaryAsync =
+        ref.watch(summaryProvider(start: range.start, end: range.end));
     final transactionsAsync = ref.watch(transactionsStreamProvider);
 
     return Scaffold(
@@ -39,9 +46,8 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       body: summaryAsync.when(
         data: (summary) => transactionsAsync.when(
           data: (transactions) {
-            final monthly = transactions
-                .where((t) => !t.date.isBefore(startOfMonth) && !t.date.isAfter(endOfMonth))
-                .toList();
+            final monthly =
+                transactions.where((t) => range.contains(t.date)).toList();
             final expenses = monthly.where((t) => t.isExpense).toList();
             final incomes = monthly.where((t) => t.isIncome).toList();
 
@@ -283,7 +289,8 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   }
 
   List<_Bucket> _weeklyBuckets(List<TransactionEntity> txns) {
-    final daysInMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0).day;
+    final MonthRange range = _range;
+    final daysInMonth = range.dayCount;
     final totals = <int, double>{};
     for (final t in txns) {
       final week = ((t.date.day - 1) ~/ 7) + 1;
@@ -293,8 +300,8 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     return weeks.map((w) {
       final startDay = (w - 1) * 7 + 1;
       final endDay = (w * 7) > daysInMonth ? daysInMonth : (w * 7);
-      final start = DateTime(_selectedMonth.year, _selectedMonth.month, startDay);
-      final end = DateTime(_selectedMonth.year, _selectedMonth.month, endDay);
+      final start = range.day(startDay);
+      final end = range.day(endDay);
       return _Bucket(
         'Week $w  ·  ${DateFormat('d MMM').format(start)} – ${DateFormat('d MMM').format(end)}',
         totals[w]!,

@@ -186,9 +186,15 @@ flutter test
 ```
 
 The suite covers the monthly export format, month navigation (including the
-year-boundary arithmetic), the transaction row widget, and the release-config
-invariants that keep signing, backup rules and the OAuth identity from silently
-regressing.
+year-boundary arithmetic), the month boundaries themselves — the in-memory predicate
+and the SQL range, run against a real in-memory database — the transaction row widget,
+and the release-config invariants that keep signing, backup rules and the OAuth
+identity from silently regressing.
+
+The database-backed tests need a SQLite library for the *host* to load, which is a
+different build from the one the app ships: Windows uses the `winsqlite3.dll` that
+ships with the OS, Linux needs `libsqlite3` installed. Where none can be loaded those
+tests are reported as skipped rather than failed.
 
 ## Project layout
 

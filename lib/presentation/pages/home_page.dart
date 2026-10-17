@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:expense_tracker/domain/entities/month_range.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
 import 'package:expense_tracker/presentation/widgets/transaction_tile.dart';
 import 'package:expense_tracker/presentation/widgets/summary_card.dart';
@@ -17,11 +18,11 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final startOfMonth = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
-    final endOfMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0, 23, 59, 59);
+    final MonthRange range = MonthRange.of(_selectedMonth);
     
     final transactionsAsync = ref.watch(transactionsStreamProvider);
-    final summaryAsync = ref.watch(summaryProvider(start: startOfMonth, end: endOfMonth));
+    final summaryAsync =
+        ref.watch(summaryProvider(start: range.start, end: range.end));
 
     return Scaffold(
       appBar: AppBar(
@@ -50,10 +51,13 @@ class _HomePageState extends ConsumerState<HomePage> {
           Expanded(
             child: transactionsAsync.when(
               data: (transactions) {
-                final filtered = transactions.where((t) {
-                  return t.date.isAfter(startOfMonth.subtract(const Duration(days: 1))) &&
-                         t.date.isBefore(endOfMonth.add(const Duration(days: 1)));
-                }).toList()
+                // Same predicate as the summary card above and the statistics
+                // page. The hand-written range that used to live here pulled in
+                // the previous month's last day and the next month's first day, so
+                // the rows on screen did not add up to the total above them.
+                final filtered = transactions
+                    .where((t) => range.contains(t.date))
+                    .toList()
                   ..sort((a, b) => b.date.compareTo(a.date));
 
                 if (filtered.isEmpty) {

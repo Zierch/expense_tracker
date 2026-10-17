@@ -1,3 +1,4 @@
+import 'package:expense_tracker/domain/entities/month_range.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:intl/intl.dart';
@@ -33,15 +34,14 @@ class ExportMonthUseCase {
   static final DateFormat _timestamp = DateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
   Future<MonthExport> call(DateTime month) async {
-    final DateTime start = DateTime(month.year, month.month, 1);
-    // Last microsecond of the month. `isBetween` is inclusive at both ends, so
-    // the upper bound must not spill into the next month — but it must not
-    // truncate the final day either. The add page seeds `date` with
-    // `DateTime.now()`, so a transaction really can carry a time-of-day, and
-    // anything in the last second of the month would otherwise be dropped from
-    // the backup silently.
-    final DateTime end = DateTime(month.year, month.month + 1, 1)
-        .subtract(const Duration(microseconds: 1));
+    // MonthRange owns the boundary reasoning, and the same range feeds the home
+    // and statistics screens, so a backup can no longer disagree with the totals
+    // those screens showed. Rows written before the add page normalised its date
+    // still carry a time-of-day, which is why the bound is the last representable
+    // instant rather than midnight of the following month.
+    final MonthRange range = MonthRange.of(month);
+    final DateTime start = range.start;
+    final DateTime end = range.end;
 
     final List<TransactionEntity> transactions =
         await _repository.getTransactionsByDateRange(start, end);
@@ -64,10 +64,10 @@ class ExportMonthUseCase {
       'currency': 'IDR',
       'exportedAt': _timestamp.format(DateTime.now()),
       'period': <String, dynamic>{
-        'year': start.year,
-        'month': start.month,
-        'startDate': _isoDate.format(start),
-        'endDate': _isoDate.format(DateTime(month.year, month.month + 1, 0)),
+        'year': range.year,
+        'month': range.month,
+        'startDate': _isoDate.format(range.start),
+        'endDate': _isoDate.format(range.day(range.dayCount)),
       },
       'summary': <String, dynamic>{
         'totalIncome': totalIncome,

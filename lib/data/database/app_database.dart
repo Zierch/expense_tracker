@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -32,6 +33,15 @@ class Transactions extends Table {
 @DriftDatabase(tables: [Categories, Subcategories, Transactions])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
+
+  /// Opens the database on [executor] instead of the on-device file.
+  ///
+  /// Tests pass `NativeDatabase.memory()` so the real schema and the real `isBetween`
+  /// comparisons run against a real SQLite. A stand-in repository cannot do that job:
+  /// it would have to reimplement the date predicate, and would then agree with
+  /// `MonthRange.contains` by construction rather than by being correct.
+  @visibleForTesting
+  AppDatabase.withExecutor(super.executor);
 
   @override
   int get schemaVersion => 2;
