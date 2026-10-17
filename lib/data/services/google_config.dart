@@ -9,7 +9,8 @@ class GoogleConfig {
   /// `google_sign_in` still needs a server (web) client ID to talk to Google's
   /// backend, so paste the *Web application* client ID here — not the Android
   /// one.
-  static const String serverClientId = 'PASTE_WEB_CLIENT_ID_HERE';
+  static const String serverClientId =
+      '942402832440-behej3ecogkms8uvcc297ggmiif580c9.apps.googleusercontent.com';
 
   /// Folder inside "My Drive" that archived files are written to.
   static const String driveFolderName = 'Expense Tracker';
