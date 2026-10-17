@@ -6,8 +6,19 @@
 //
 // Read files from disk and assert that each invariant still holds.
 
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+
+/// Exception thrown when git binary is not available on the host.
+/// This is a host property (not a code defect), so tests may skip on this.
+class _GitNotAvailableException implements Exception {
+  final String message;
+  const _GitNotAvailableException(this.message);
+  @override
+  String toString() => message;
+}
 
 /// Every data domain the extraction rules format documents.
 ///
@@ -601,6 +612,331 @@ void main() {
     });
   });
 
+  group('secret-shaped credentials in tracked files', () {
+    test('no secret-shaped values may appear in tracked working tree or index', () {
+      String root;
+      try {
+        root = _getGitRoot();
+      } on _GitNotAvailableException {
+        markTestSkipped('git is not available; cannot verify tracked file contents');
+        return;
+      }
+
+      final List<String> workingTreeFindings = _findSecretsInWorkingTree(root);
+      final List<String> indexFindings = _findSecretsInIndex(root);
+      final List<String> allFindings = <String>[...workingTreeFindings, ...indexFindings];
+
+      // Verify the scan actually looked at files (not a cwd/anchoring bug)
+      final ProcessResult lsFiles = Process.runSync(
+        'git',
+        <String>['ls-files'],
+        workingDirectory: root,
+      );
+      final List<String> trackedFiles =
+          (lsFiles.stdout as String).split('\n').where((String f) => f.isNotEmpty).toList();
+
+      expect(
+        trackedFiles.length,
+        greaterThan(20),
+        reason:
+            'the secret guard must not pass on an empty scan (anchoring/cwd bug)',
+      );
+
+      expect(
+        allFindings,
+        isEmpty,
+        reason:
+            'SECURITY: no credential-shaped value may be committed. Tracked files '
+            'in working tree or staged in index must never contain: Google OAuth '
+            'secrets (GOCSPX-*), API keys (AIza*), access tokens (ya29.*), refresh '
+            'tokens (1//0*), or PEM private keys with body. Findings: $allFindings',
+      );
+    });
+
+    test('scanner detects all secret patterns (with body) and rejects bare prose', () {
+      // Control: prove the scanner detects every pattern.
+      // Build fakes at runtime (no literal in source may match a pattern).
+
+      final String fakeGoogleSecret = 'GOCSPX-${'A' * 24}';
+      final String fakeApiKey = 'AIza${'B' * 24}';
+      final String fakeAccessToken = 'ya29.${'C' * 24}';
+      final String fakeRefreshToken = '1//0${'D' * 24}';
+      // PEM with body: header + newline + base64 chars
+      const String fakePemHeader = '-----BEGIN ' 'RSA ' 'PRIVATE KEY-----';
+      final String fakePemWithBody = '$fakePemHeader\nMIIEpAIBAAKCAQEA${'X' * 30}';
+
+      expect(_containsSecrets('secret: $fakeGoogleSecret'), isTrue,
+          reason: 'SECURITY: scanner must detect GOCSPX-* pattern.');
+      expect(_containsSecrets('secret: $fakeApiKey'), isTrue,
+          reason: 'SECURITY: scanner must detect AIza* pattern.');
+      expect(_containsSecrets('secret: $fakeAccessToken'), isTrue,
+          reason: 'SECURITY: scanner must detect ya29.* pattern.');
+      expect(_containsSecrets('secret: $fakeRefreshToken'), isTrue,
+          reason: 'SECURITY: scanner must detect 1//0* pattern.');
+      expect(_containsSecrets(fakePemWithBody), isTrue,
+          reason:
+              'SECURITY: scanner must detect PEM private keys (header + body).');
+
+      // Negative cases: documentation should not trigger
+      expect(_containsSecrets('see the GOCSPX- and AIza notes in the guide'), isFalse,
+          reason:
+              'SECURITY: scanner must NOT match partial credentials in prose; '
+              'only complete value shapes.');
+      expect(_containsSecrets('-----BEGIN PRIVATE KEY-----'), isFalse,
+          reason:
+              'SECURITY: scanner must NOT match bare PEM headers in prose; '
+              'body (base64) is required.');
+
+      // Bare DSA and PGP headers (no body) must also not trigger
+      const String bareDsaHeader = '-----BEGIN ' 'DSA ' 'PRIVATE KEY-----';
+      const String barePgpHeader = '-----BEGIN ' 'PGP ' 'PRIVATE KEY BLOCK-----';
+      expect(_containsSecrets(bareDsaHeader), isFalse,
+          reason: 'SECURITY: bare DSA header without body must not match.');
+      expect(_containsSecrets(barePgpHeader), isFalse,
+          reason: 'SECURITY: bare PGP header without body must not match.');
+
+      expect(_containsSecrets('amount = 12000'), isFalse,
+          reason: 'SECURITY: scanner must NOT match normal code.');
+
+      // Control: findings detection as used in actual scans
+      expect(_findSecretLineNumbers('secret: $fakeGoogleSecret'), isNotEmpty,
+          reason: 'line-number scanner must find GOCSPX-*');
+      expect(_findSecretLineNumbers('-----BEGIN PRIVATE KEY-----'), isEmpty,
+          reason: 'line-number scanner must reject bare PEM header');
+      expect(_findSecretLineNumbers(bareDsaHeader), isEmpty,
+          reason: 'line-number scanner must reject bare DSA header');
+      expect(_findSecretLineNumbers(barePgpHeader), isEmpty,
+          reason: 'line-number scanner must reject bare PGP header');
+      expect(_findSecretLineNumbers(fakePemWithBody), isNotEmpty,
+          reason: 'line-number scanner must find PEM+body');
+    });
+
+    test('staged-then-deleted files in index are detected (GOCSPX and PEM)', () {
+      try {
+        _requireGitBinary();
+      } on _GitNotAvailableException {
+        markTestSkipped('git is not available');
+        return;
+      }
+
+      // Create a scratch repo in temp to isolate the test
+      final Directory scratchDir = Directory(p.join(Directory.systemTemp.path, 'expense-tracker-secret-guard-${DateTime.now().millisecondsSinceEpoch}'));
+      scratchDir.createSync();
+
+      try {
+        // Init scratch repo
+        final ProcessResult gitInit = Process.runSync(
+          'git',
+          <String>['init'],
+          workingDirectory: scratchDir.path,
+        );
+        expect(gitInit.exitCode, 0, reason: 'git init failed');
+
+        // Test case A: staged-then-deleted GOCSPX secret
+        final String fakeGocspxSecret = 'GOCSPX-${'Y' * 24}';
+        final File probeFileA = File(p.join(scratchDir.path, 'secret_gocspx.txt'));
+        probeFileA.writeAsStringSync('config: $fakeGocspxSecret\n');
+
+        final ProcessResult gitAddA = Process.runSync(
+          'git',
+          <String>['add', 'secret_gocspx.txt'],
+          workingDirectory: scratchDir.path,
+        );
+        expect(gitAddA.exitCode, 0, reason: 'git add secret_gocspx.txt failed');
+
+        probeFileA.deleteSync();
+
+        // Test case B: staged-then-deleted PEM secret with body
+        const String pemHeader = '-----BEGIN ' 'RSA ' 'PRIVATE KEY-----';
+        final String fakePemSecret = '$pemHeader\nMIIEpAIBAAKCAQEA${'Z' * 30}\n';
+        final File probeFileB = File(p.join(scratchDir.path, 'secret_pem.txt'));
+        probeFileB.writeAsStringSync(fakePemSecret);
+
+        final ProcessResult gitAddB = Process.runSync(
+          'git',
+          <String>['add', 'secret_pem.txt'],
+          workingDirectory: scratchDir.path,
+        );
+        expect(gitAddB.exitCode, 0, reason: 'git add secret_pem.txt failed');
+
+        probeFileB.deleteSync();
+
+        // Test case C: staged prose (bare PEM header) that should NOT be flagged
+        final File probeFileC = File(p.join(scratchDir.path, 'prose.txt'));
+        probeFileC.writeAsStringSync('See the -----BEGIN PRIVATE KEY----- format in the docs.\n');
+
+        final ProcessResult gitAddC = Process.runSync(
+          'git',
+          <String>['add', 'prose.txt'],
+          workingDirectory: scratchDir.path,
+        );
+        expect(gitAddC.exitCode, 0, reason: 'git add prose.txt failed');
+
+        probeFileC.deleteSync();
+
+        // Test case D: staged-then-deleted binary file with secret-shaped bytes.
+        // Pins end-to-end binary detection: the prefilter must return binary entries
+        // and the confirmation must decode bytes tolerantly. Note: `git grep -l`
+        // lists binary matches with or without `-a` (verified by experiment), so `-a`
+        // documents text-mode intent rather than changing behaviour here. The
+        // working-tree scan cannot help: the file is deleted.
+        final String fakeBinarySecret = 'GOCSPX-${'B' * 24}';
+        final File probeBinary = File(p.join(scratchDir.path, 'binary.dat'));
+        probeBinary.writeAsBytesSync(
+            utf8.encode('data: ') + utf8.encode(fakeBinarySecret) + utf8.encode('\x00\xFF'));
+
+        final ProcessResult gitAddBin = Process.runSync(
+          'git',
+          <String>['add', 'binary.dat'],
+          workingDirectory: scratchDir.path,
+        );
+        expect(gitAddBin.exitCode, 0, reason: 'git add binary.dat failed');
+
+        probeBinary.deleteSync();
+
+        // Index scan must report both GOCSPX and PEM but not bare prose
+        final List<String> indexFindings = _findSecretsInIndex(scratchDir.path);
+        final List<String> workingTreeFindings = _findSecretsInWorkingTree(scratchDir.path);
+
+        expect(indexFindings, contains(matches(RegExp(r'secret_gocspx\.txt.*staged'))),
+            reason:
+                'SECURITY: index scan must detect staged GOCSPX secret even after deletion.');
+        expect(indexFindings, contains(matches(RegExp(r'secret_pem\.txt.*staged'))),
+            reason:
+                'SECURITY: index scan must detect staged PEM secret (with body) even after deletion.');
+        expect(indexFindings, contains(matches(RegExp(r'binary\.dat.*staged'))),
+            reason:
+                'SECURITY: index scan must detect staged secret in binary (byte-shaped) even after deletion. '
+                'This is what -l guarantees for binary entries; -a keeps the prefilter explicitly text-mode.');
+        expect(indexFindings, isNot(contains(matches(RegExp(r'prose\.txt')))),
+            reason:
+                'SECURITY: index scan must NOT flag bare PEM headers in prose.');
+
+        expect(workingTreeFindings, isEmpty,
+            reason:
+                'SECURITY: working-tree scan correctly reports nothing for deleted files; '
+                'index scan covers the staged state.');
+      } finally {
+        scratchDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('unstaged non-ASCII filename with secret is detected by working-tree scan', () {
+      try {
+        _requireGitBinary();
+      } on _GitNotAvailableException {
+        markTestSkipped('git is not available');
+        return;
+      }
+
+      // M-A regression: git ls-files without -z produces C-quoted paths like "caf\303\251.txt"
+      // which File(...) cannot resolve. This control ensures the guard fails if -z is dropped.
+      final Directory scratchDir = Directory(p.join(Directory.systemTemp.path, 'expense-tracker-secret-guard-ma-${DateTime.now().millisecondsSinceEpoch}'));
+      scratchDir.createSync();
+
+      try {
+        // Init scratch repo
+        final ProcessResult gitInit = Process.runSync(
+          'git',
+          <String>['init'],
+          workingDirectory: scratchDir.path,
+        );
+        expect(gitInit.exitCode, 0, reason: 'git init failed');
+
+        // Create file with non-ASCII name; stage clean content
+        const String nonAsciiName = 'zz caf\u00e9.txt';
+        final File nonAsciiFile = File(p.join(scratchDir.path, nonAsciiName));
+        nonAsciiFile.writeAsStringSync('clean content\n');
+
+        final ProcessResult gitAdd = Process.runSync(
+          'git',
+          <String>['add', nonAsciiName],
+          workingDirectory: scratchDir.path,
+        );
+        expect(gitAdd.exitCode, 0, reason: 'git add failed');
+
+        // Append secret to working-tree file (unstaged)
+        final String fakeSecret = 'GOCSPX-${'M' * 24}';
+        nonAsciiFile.writeAsStringSync('clean content\n' 'leak: $fakeSecret\n', mode: FileMode.append);
+
+        // Working-tree scan MUST resolve the non-ASCII path and detect the unstaged secret.
+        // This test fails if `-z` is dropped from git ls-files, because git would emit
+        // C-quoted `"zz caf\303\251.txt"` and the path would not resolve.
+        final List<String> workingTreeFindings = _findSecretsInWorkingTree(scratchDir.path);
+
+        expect(workingTreeFindings, contains(matches(RegExp(r'caf.*\.txt:[23]'))),
+            reason:
+                'SECURITY: working-tree scan must resolve non-ASCII filenames and report secrets. '
+                'This requires git ls-files -z (NUL-delimited) to avoid C-quoting. '
+                'If this test fails, -z was dropped from the git ls-files call.');
+      } finally {
+        scratchDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('no signing keystores or key.properties are git-tracked', () {
+      String root;
+      try {
+        root = _getGitRoot();
+      } on _GitNotAvailableException {
+        markTestSkipped('git is not available; cannot verify tracked files');
+        return;
+      }
+
+      final ProcessResult lsFiles;
+      try {
+        lsFiles = Process.runSync(
+          'git',
+          <String>['ls-files', '-z'],
+          workingDirectory: root,
+          stdoutEncoding: utf8,
+          stderrEncoding: utf8,
+        );
+      } on ProcessException {
+        throw StateError('git ls-files failed');
+      }
+
+      if (lsFiles.exitCode != 0) {
+        throw StateError('git ls-files exited ${lsFiles.exitCode}');
+      }
+
+      // Split on NUL bytes (result of -z flag) for proper UTF-8 path handling
+      final List<String> trackedFiles =
+          (lsFiles.stdout as String).split('\x00').where((String f) => f.isNotEmpty).toList();
+
+      expect(trackedFiles.length, greaterThan(20),
+          reason: 'scan must include files from repo root (not a cwd bug)');
+
+      for (final String file in trackedFiles) {
+        // Exact path match: must be 'android/key.properties', not 'my-key.properties'
+        expect(
+          file,
+          isNot(equalsIgnoringCase('android/key.properties')),
+          reason:
+              'SECURITY: android/key.properties must never be committed. '
+              'It contains the release signing password and is git-ignored. '
+              '(android/key.properties.example is allowed as a template.)',
+        );
+
+        expect(
+          file,
+          isNot(endsWith('.jks')),
+          reason:
+              'SECURITY: *.jks keystores must never be committed; they contain '
+              'the release signing key material and must stay local only.',
+        );
+
+        expect(
+          file,
+          isNot(endsWith('.keystore')),
+          reason:
+              'SECURITY: *.keystore keystores must never be committed; they contain '
+              'the release signing key material and must stay local only.',
+        );
+      }
+    });
+  });
+
   // The Gradle assertions read comments, and build.gradle.kts really does contain
   // the construct that _kotlinCode's doc comment names as its blind spot:
   // `"android/key.properties has no value for: ${blank.joinToString(", ")}."`. The
@@ -921,3 +1257,247 @@ String _kotlinCode(String source) {
 
   return out.toString();
 }
+
+/// Probes for git binary availability; throws if not found.
+/// Used by tests that only need to confirm git is runnable (not a full work-tree check).
+void _requireGitBinary() {
+  try {
+    Process.runSync('git', <String>['--version'],
+        stdoutEncoding: utf8, stderrEncoding: utf8);
+  } on ProcessException {
+    throw const _GitNotAvailableException('git binary not available');
+  }
+}
+
+/// Returns git repo root or throws distinct errors for different failure modes.
+///
+/// Throws `_GitNotAvailableException` if git binary is missing (host issue → may skip).
+/// Throws `StateError` if not a work tree (broken premise → must fail loudly).
+String _getGitRoot() {
+  final ProcessResult root;
+  try {
+    root = Process.runSync('git', <String>['rev-parse', '--show-toplevel'],
+        stdoutEncoding: utf8, stderrEncoding: utf8);
+  } on ProcessException catch (e) {
+    // Git binary not available: host property, not a code defect.
+    throw _GitNotAvailableException('git binary not available: $e');
+  }
+
+  if (root.exitCode != 0) {
+    // Not a git work tree: broken premise for the guard, must fail loudly.
+    throw StateError(
+        'SECURITY GUARD BROKEN: could not resolve a git work tree. '
+        'The secret guard assumes a git work tree and cannot run outside one. '
+        'stderr: ${root.stderr}');
+  }
+
+  return (root.stdout as String).trim();
+}
+
+/// Returns lines from [content] that match secret-shaped value patterns, with line numbers.
+///
+/// Matches literal credential formats that would be dangerous if committed:
+/// - GOCSPX-[20+ chars] (Google OAuth client secret)
+/// - AIza[20+ chars] (Google API key)
+/// - ya29.[20+ chars] (Google access token)
+/// - 1//0[20+ chars] (Google refresh token)
+/// - -----BEGIN...PRIVATE KEY----- with body (PEM-format private keys, including DSA and PGP)
+///
+/// Returns list where each match identifies its line (1-indexed).
+/// For multi-line PEM patterns, returns the header line number.
+/// Does not match documentation mentioning these names without complete values.
+List<int> _findSecretLineNumbers(String content) {
+  final Set<int> foundLines = <int>{};
+  final List<String> lines = content.split('\n');
+  final List<RegExp> singleLinePatterns = <RegExp>[
+    RegExp(r'GOCSPX-[A-Za-z0-9_-]{20,}'),
+    RegExp(r'AIza[0-9A-Za-z_-]{20,}'),
+    RegExp(r'ya29\.[A-Za-z0-9_-]{20,}'),
+    RegExp(r'1//0[A-Za-z0-9_-]{20,}'),
+  ];
+
+  // Check single-line patterns
+  for (int i = 0; i < lines.length; i++) {
+    for (final RegExp pattern in singleLinePatterns) {
+      if (pattern.hasMatch(lines[i])) {
+        foundLines.add(i + 1);
+        break;
+      }
+    }
+  }
+
+  // Check multi-line PEM patterns: header + body
+  // RSA, EC, OpenSSH, DSA standard formats + PGP block format
+  final RegExp pemPattern = RegExp(
+      r'-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY(?: BLOCK)?-----[\r\n]+[A-Za-z0-9+/=\-]{20,}',
+      multiLine: true);
+
+  if (pemPattern.hasMatch(content)) {
+    // Find the line with the header and report it
+    for (int i = 0; i < lines.length; i++) {
+      if ((lines[i].contains('-----BEGIN') && lines[i].contains('PRIVATE KEY')) ||
+          (lines[i].contains('-----BEGIN') && lines[i].contains('PRIVATE KEY BLOCK'))) {
+        foundLines.add(i + 1);
+        break;
+      }
+    }
+  }
+
+  return foundLines.toList()..sort();
+}
+
+// Files exceeding size cap (8 MB) are reported as findings (loud failure via expect).
+// Read errors on existing files throw loudly. Keep the cap small to avoid buffering huge blobs.
+const int _fileSizeCap = 8 * 1024 * 1024;
+
+/// Returns list of findings as `'<path>:<linenum>'` from working tree.
+///
+/// Scans only tracked files using `git ls-files -z` for proper UTF-8 path handling.
+/// Reports findings with exact line numbers.
+/// Files exceeding size cap are reported as capped findings.
+/// Files that exist but cannot be read throw loudly (could hide secrets).
+List<String> _findSecretsInWorkingTree(String gitRoot) {
+  final ProcessResult lsFiles;
+  try {
+    lsFiles = Process.runSync(
+      'git',
+      <String>['ls-files', '-z'],
+      workingDirectory: gitRoot,
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
+    );
+  } on ProcessException {
+    throw StateError('git ls-files failed');
+  }
+
+  if (lsFiles.exitCode != 0) {
+    throw StateError('git ls-files exited ${lsFiles.exitCode}');
+  }
+
+  final List<String> findings = <String>[];
+  // Split on NUL bytes (result of -z flag) for proper UTF-8 path handling
+  final List<String> files =
+      (lsFiles.stdout as String).split('\x00').where((String f) => f.isNotEmpty).toList();
+
+  for (final String filePath in files) {
+    final File file = File(p.join(gitRoot, filePath));
+    if (!file.existsSync()) continue;
+
+    String content;
+    try {
+      final List<int> bytes = file.readAsBytesSync();
+      if (bytes.length > _fileSizeCap) {
+        // Unscanned file (size cap): fail loudly
+        findings.add('$filePath (file exceeds 8 MB size cap; unscanned)');
+        continue;
+      }
+      content = utf8.decode(bytes, allowMalformed: true);
+    } on FileSystemException catch (e) {
+      // File exists but cannot be read: fail loudly (could hide secrets).
+      throw StateError(
+          'SECURITY GUARD FAILURE: tracked file $filePath exists but cannot be read. '
+          'A secret could be hidden here. Error: $e');
+    }
+
+    final List<int> lineNumbers = _findSecretLineNumbers(content);
+    for (final int lineNum in lineNumbers) {
+      findings.add('$filePath:$lineNum');
+    }
+  }
+
+  return findings;
+}
+
+/// Returns list of findings as `'<path> (staged)'` from git index.
+///
+/// Uses `git grep --cached -a -z` (-z for NUL-delimited output; -a marks the
+/// prefilter as explicitly text-mode — `-l` lists binary matches either way)
+/// as prefilter, then confirms with strict scanner by reading index content via `git show ":<path>"`.
+/// Handles UTF-8 encoding explicitly on all git calls to avoid mangling non-ASCII file names.
+/// Files exceeding size cap (8 MB) are reported as capped; an unscanned file fails loudly.
+List<String> _findSecretsInIndex(String gitRoot) {
+  // Coarse prefilter alternation (matches candidates)
+  const String patternAlt = r'(GOCSPX-[A-Za-z0-9_-]{20,}|'
+      r'AIza[0-9A-Za-z_-]{20,}|'
+      r'ya29\.[A-Za-z0-9_-]{20,}|'
+      r'1//0[A-Za-z0-9_-]{20,}|'
+      r'-----BEGIN.*(PRIVATE KEY|PRIVATE KEY BLOCK))';
+
+  final ProcessResult grep;
+  try {
+    grep = Process.runSync(
+      'git',
+      <String>['grep', '--cached', '-a', '-z', '-l', '-E', patternAlt],
+      workingDirectory: gitRoot,
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
+    );
+  } on ProcessException {
+    throw StateError('git grep --cached failed');
+  }
+
+  // Exit 0: matches found. Exit 1: no matches (not an error).
+  if (grep.exitCode == 1) return <String>[];
+  if (grep.exitCode != 0) {
+    throw StateError('git grep --cached exited ${grep.exitCode}: ${grep.stderr}');
+  }
+
+  // Split on NUL bytes (result of -z flag) to get real paths without quoting
+  final List<String> candidates =
+      (grep.stdout as String).split('\x00').where((String f) => f.isNotEmpty).toList();
+
+  final List<String> confirmed = <String>[];
+
+  // Confirm each candidate with strict scanner
+  for (final String candidatePath in candidates) {
+    final ProcessResult show;
+    try {
+      // Explicitly pass stdoutEncoding: null to get raw bytes; size-cap check + allowMalformed decode
+      show = Process.runSync(
+        'git',
+        <String>['show', ':$candidatePath'],
+        workingDirectory: gitRoot,
+        stdoutEncoding: null,
+        stderrEncoding: utf8,
+      );
+    } on ProcessException {
+      // Can't read from index: fail loudly (candidate was found but unreachable).
+      throw StateError(
+          'SECURITY GUARD FAILURE: index candidate $candidatePath matched prefilter '
+          'but cannot be read via git show. This should not happen; git state is corrupt?');
+    }
+
+    if (show.exitCode != 0) {
+      throw StateError(
+          'SECURITY GUARD FAILURE: git show :$candidatePath exited ${show.exitCode}. '
+          'Candidate was flagged but is now unreachable.');
+    }
+
+    String content;
+    try {
+      final List<int> bytes = show.stdout as List<int>;
+      
+      if (bytes.length > _fileSizeCap) {
+        // Unscanned file (size cap): fail loudly
+        confirmed.add('$candidatePath (staged, exceeds 8 MB size cap; unscanned)');
+        continue;
+      }
+      content = utf8.decode(bytes, allowMalformed: true);
+    } catch (e) {
+      throw StateError('Failed to decode index content for $candidatePath: $e');
+    }
+
+    final List<int> lineNumbers = _findSecretLineNumbers(content);
+
+    if (lineNumbers.isNotEmpty) {
+      confirmed.add('$candidatePath (staged)');
+    }
+  }
+
+  return confirmed;
+}
+
+/// Legacy function for unit testing scanner logic.
+/// Returns whether [content] contains any secret-shaped values (for unit tests only).
+bool _containsSecrets(String content) => _findSecretLineNumbers(content).isNotEmpty;
+
