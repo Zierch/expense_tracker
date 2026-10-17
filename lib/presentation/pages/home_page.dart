@@ -45,11 +45,15 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          SummaryCard(summaryAsync: summaryAsync),
-          Expanded(
-            child: transactionsAsync.when(
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: CustomScrollView(
+          // Always scrollable, so the pull also arms while the list is short,
+          // empty or showing an error.
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(child: SummaryCard(summaryAsync: summaryAsync)),
+            transactionsAsync.when(
               data: (transactions) {
                 // Same predicate as the summary card above and the statistics
                 // page. The hand-written range that used to live here pulled in
@@ -61,38 +65,51 @@ class _HomePageState extends ConsumerState<HomePage> {
                   ..sort((a, b) => b.date.compareTo(a.date));
 
                 if (filtered.isEmpty) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.receipt_long, size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text('No transactions yet', style: TextStyle(fontSize: 18, color: Colors.grey)),
-                        Text('Add your first transaction', style: TextStyle(color: Colors.grey)),
-                      ],
+                  return const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.receipt_long, size: 64, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text('No transactions yet',
+                              style: TextStyle(fontSize: 18, color: Colors.grey)),
+                          Text('Add your first transaction',
+                              style: TextStyle(color: Colors.grey)),
+                        ],
+                      ),
                     ),
                   );
                 }
 
-                return ListView.separated(
+                return SliverPadding(
                   padding: const EdgeInsets.all(16),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final transaction = filtered[index];
-                    return TransactionTile(
-                      transaction: transaction,
-                      onTap: () => context.push('/edit/${transaction.id}'),
-                      onDelete: () => _deleteTransaction(transaction.id),
-                    );
-                  },
+                  sliver: SliverList.separated(
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final transaction = filtered[index];
+                      return TransactionTile(
+                        transaction: transaction,
+                        onTap: () => context.push('/edit/${transaction.id}'),
+                        onDelete: () => _deleteTransaction(transaction.id),
+                      );
+                    },
+                  ),
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
+              loading: () => const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (e, _) => SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: Text('Error: $e')),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/add'),
@@ -100,6 +117,30 @@ class _HomePageState extends ConsumerState<HomePage> {
         label: const Text('Transaction'),
       ),
     );
+  }
+
+  /// Re-runs the queries behind the month on screen.
+  ///
+  /// The card and the list describe the same snapshot, so both providers are
+  /// dropped together; awaiting the new values keeps the indicator spinning
+  /// until the screen actually shows them.
+  Future<void> _refresh() async {
+    final MonthRange range = MonthRange.of(_selectedMonth);
+
+    ref.invalidate(transactionsStreamProvider);
+    ref.invalidate(summaryProvider(start: range.start, end: range.end));
+
+    try {
+      await Future.wait(<Future<Object?>>[
+        ref.read(transactionsStreamProvider.future),
+        ref.read(summaryProvider(start: range.start, end: range.end).future),
+      ], eagerError: true);
+    } catch (error) {
+      // A provider-level failure already surfaces through the error branch
+      // below; an unexpected throw (a provider disposed mid-refresh, say) would
+      // otherwise vanish without a trace. The indicator retracts either way.
+      debugPrint('Dashboard refresh failed: $error');
+    }
   }
 
   Future<void> _pickMonth() async {
