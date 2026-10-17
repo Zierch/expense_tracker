@@ -11,25 +11,14 @@
 // agreed with itself by construction, and the one test that mentioned the conversion
 // performed the truncation itself and then asserted its own arithmetic.
 //
-// The native library here is the host's, not the app's: `flutter test` runs on the
-// Dart VM, where `package:sqlite3` opens `sqlite3.dll` and then `winsqlite3.dll` on
-// Windows, or a system `libsqlite3` on Linux. The app ships its own copy through
-// `sqlite3_flutter_libs`, which a host test cannot reach, so this is a different
-// build of SQLite — and that is fine, because nothing here depends on the build:
-// what is pinned is drift's `DateTime` conversion and the inclusivity of `BETWEEN`
-// over integers, neither of which is implementation-specific.
+// The database these queries run against — and the skip on a host with no SQLite to
+// open — comes from `sqlite_support.dart`, which every database test shares.
 
-import 'package:drift/native.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/domain/entities/month_range.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// What `DynamicLibrary.open` puts in the message when it cannot find a library.
-///
-/// Only an `ArgumentError` carrying this marker is treated as "this host has no
-/// SQLite". Anything else escaping the open — a schema problem, a migration bug — is
-/// rethrown, so a broken database cannot turn into a quiet skip.
-const String _missingLibraryMarker = 'Failed to load dynamic library';
+import 'sqlite_support.dart';
 
 void main() {
   final MonthRange september = MonthRange.of(DateTime(2026, 9, 15));
@@ -65,38 +54,20 @@ void main() {
     }
   }
 
-  /// Runs [body] against a real in-memory database, skipping loudly when this host
-  /// has no SQLite to open.
-  ///
-  /// The real schema, the real migration and the real category seed: the whole point
-  /// is that the query under test is the query the app runs. A host without a loadable
-  /// SQLite is reported as skipped rather than failed, because that is an environment
-  /// problem and not a statement about this change — but it is reported, not hidden.
-  void sqliteTest(
+  /// Seeds the fixtures above, then hands the database to the shared harness: the real
+  /// schema, the real migration and the real category seed, because the whole point is
+  /// that the query under test is the query the app runs.
+  void seededSqliteTest(
     String description,
     Future<void> Function(AppDatabase db) body,
   ) {
-    test(description, () async {
-      late final AppDatabase db;
-      try {
-        db = AppDatabase.withExecutor(NativeDatabase.memory());
-      } on ArgumentError catch (error) {
-        if (!'${error.message}'.contains(_missingLibraryMarker)) rethrow;
-        markTestSkipped('no SQLite for `flutter test` to load on this host '
-            '(the app ships its own; host tests use the system one): $error');
-        return;
-      }
-
-      try {
-        await seed(db);
-        await body(db);
-      } finally {
-        await db.close();
-      }
+    sqliteTest(description, (AppDatabase db) async {
+      await seed(db);
+      await body(db);
     });
   }
 
-  sqliteTest(
+  seededSqliteTest(
     'the list filter keeps every row the SQL range returns',
     (AppDatabase db) async {
       final List<Transaction> rows =
@@ -130,7 +101,7 @@ void main() {
     },
   );
 
-  sqliteTest(
+  seededSqliteTest(
     'three neighbouring months partition the rows exactly',
     (AppDatabase db) async {
       // A row counted in two months is double-counted; a row counted in none vanishes
@@ -151,7 +122,7 @@ void main() {
     },
   );
 
-  sqliteTest(
+  seededSqliteTest(
     'the last second of the month survives the round trip',
     (AppDatabase db) async {
       final List<Transaction> rows =
@@ -169,7 +140,7 @@ void main() {
     },
   );
 
-  sqliteTest(
+  seededSqliteTest(
     'the month total equals the rows the list would show',
     (AppDatabase db) async {
       // The symptom being guarded is a list and the total above it disagreeing, so the
