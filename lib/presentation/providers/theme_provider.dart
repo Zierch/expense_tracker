@@ -23,12 +23,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// The already-loaded [SharedPreferences] instance, provided by an override in
 /// `main()`.
-final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError(
-    'Override sharedPreferencesProvider in the root ProviderScope before '
-    'runApp, so the first frame sees the remembered theme — see main().',
-  );
-});
+///
+/// `null` means the read failed on startup: an unremembered theme is a
+/// cosmetic regression and this provider stays `null` so the app still opens
+/// — the never-ending splash of v1.2.0 is what this null path prevents.
+final sharedPreferencesProvider = Provider<SharedPreferences?>((ref) => null);
 
 /// The user's theme choice under one key.
 class ThemeModeController extends Notifier<ThemeMode> {
@@ -36,7 +35,7 @@ class ThemeModeController extends Notifier<ThemeMode> {
 
   @override
   ThemeMode build() {
-    return switch (ref.watch(sharedPreferencesProvider).getString(_key)) {
+    return switch (ref.watch(sharedPreferencesProvider)?.getString(_key)) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
       _ => ThemeMode.system,
@@ -45,12 +44,14 @@ class ThemeModeController extends Notifier<ThemeMode> {
 
   /// Applies and remembers the mode.
   ///
-  /// A failed write costs nothing but the *next* launch — the running app
-  /// already switched — so the state change is not gated on the write.
+  /// Without a backing store (startup read failed) the choice still applies
+  /// for this session, it simply is not remembered for the next one. A failed
+  /// write costs the same, so neither gates the visible change.
   void set(ThemeMode mode) {
-    unawaited(
-      ref.read(sharedPreferencesProvider).setString(_key, mode.name),
-    );
+    final SharedPreferences? prefs = ref.read(sharedPreferencesProvider);
+    if (prefs != null) {
+      unawaited(prefs.setString(_key, mode.name));
+    }
     state = mode;
   }
 }

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:expense_tracker/domain/entities/month_range.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
 import 'package:expense_tracker/presentation/providers/theme_provider.dart';
-import 'package:expense_tracker/presentation/providers/update_providers.dart';
 import 'package:expense_tracker/presentation/widgets/transaction_tile.dart';
 import 'package:expense_tracker/presentation/widgets/summary_card.dart';
 import 'package:go_router/go_router.dart';
@@ -19,52 +18,12 @@ class _HomePageState extends ConsumerState<HomePage> {
   DateTime _selectedMonth = DateTime.now();
 
   @override
-  void initState() {
-    super.initState();
-    // Check for a new release once, after the first frame: network work does
-    // not belong inside a build.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(appUpdateControllerProvider.notifier).checkOnLaunch();
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final MonthRange range = MonthRange.of(_selectedMonth);
 
     final transactionsAsync = ref.watch(transactionsStreamProvider);
     final summaryAsync =
         ref.watch(summaryProvider(start: range.start, end: range.end));
-
-    // Announces a newer release once, when the check lands on it: tapping the
-    // banner reaches the full download and install flow on the Backup page.
-    ref.listen<AppUpdateState>(appUpdateControllerProvider, (previous, next) {
-      if (next is! UpdateAvailable || previous is UpdateAvailable) return;
-      final release = next.release;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentMaterialBanner()
-        ..showMaterialBanner(MaterialBanner(
-          content: Text(
-            'Expense Tracker ${release.version} is available — open Backup '
-            'to update.',
-          ),
-          leading: const Icon(Icons.system_update_outlined),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
-                context.push('/backup');
-              },
-              child: const Text('Review'),
-            ),
-            TextButton(
-              onPressed: () =>
-                  ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-              child: const Text('Later'),
-            ),
-          ],
-        ));
-    });
 
     return Scaffold(
       appBar: AppBar(

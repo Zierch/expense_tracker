@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:expense_tracker/presentation/pages/home_page.dart';
@@ -5,11 +7,18 @@ import 'package:expense_tracker/presentation/pages/add_transaction_page.dart';
 import 'package:expense_tracker/presentation/pages/statistics_page.dart';
 import 'package:expense_tracker/presentation/pages/backup_page.dart';
 import 'package:expense_tracker/presentation/providers/theme_provider.dart';
+import 'package:expense_tracker/presentation/providers/update_providers.dart';
+import 'package:expense_tracker/data/services/app_update_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Root navigator key, so background code (the update pop-up) can reach the
+/// navigator that every page of the app lives under.
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/',
     routes: [
       GoRoute(
@@ -39,23 +48,65 @@ final routerProvider = Provider<GoRouter>((ref) {
 });
 
 Future<void> main() async {
-  // The theme choice is loaded *before* the app is run: the first frame must
-  // carry the remembered mode, not flash the system theme while prefs load.
+  // The theme choice is loaded before runApp, so the first frame carries the
+  // remembered mode rather than flashing the system theme while prefs load.
+  // A failure must not strand the app on the splash — v1.2.0 taught that in
+  // production — so the provider stays unoverridden (null = no memory of a
+  // theme choice) and the app opens on the system theme instead.
   WidgetsFlutterBinding.ensureInitialized();
-  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  SharedPreferences? prefs;
+  try {
+    prefs = await SharedPreferences.getInstance();
+  } on Object catch (error) {
+    FlutterError.reportError(FlutterErrorDetails(
+      exception: error,
+      library: 'expense_tracker',
+      context: ErrorDescription('loading preferences on startup'),
+    ));
+  }
 
   runApp(ProviderScope(
-    overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+    overrides: prefs == null
+        ? const <Override>[]
+        : <Override>[sharedPreferencesProvider.overrideWithValue(prefs)],
     child: const ExpenseTrackerApp(),
   ));
 }
 
-class ExpenseTrackerApp extends ConsumerWidget {
+class ExpenseTrackerApp extends ConsumerStatefulWidget {
   const ExpenseTrackerApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ExpenseTrackerApp> createState() => _ExpenseTrackerAppState();
+}
+
+class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
+  bool _updateDialogOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // The launch check lives entirely in the background: once the app has
+    // drawn its first frame, the request runs out from under the UI and only
+    // ever *pops up* when a newer release actually exists.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(ref.read(appUpdateControllerProvider.notifier).checkOnLaunch());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
+
+    // The pop-up at the root so it can appear on any page. Exactly once per
+    // launch and only for a *newly* discovered update: reopening it on every
+    // rebuild would turn an offer into a nag.
+    ref.listen<AppUpdateState>(appUpdateControllerProvider, (previous, next) {
+      if (next is! UpdateAvailable || previous is UpdateAvailable) return;
+      if (!mounted || _updateDialogOpen) return;
+      _updateDialogOpen = true;
+      unawaited(_showUpdatePopUp(next.release));
+    });
 
     return MaterialApp.router(
       title: 'Expense Tracker',
@@ -65,6 +116,44 @@ class ExpenseTrackerApp extends ConsumerWidget {
       themeMode: ref.watch(themeModeProvider),
       routerConfig: router,
     );
+  }
+
+  /// The update pop-up: one offer, two answers, data untouched either way.
+  ///
+  /// Shown against the root navigator, not this widget's context: the listener
+  /// lives above `MaterialApp`, where no navigator exists to look up — the
+  /// global key is the bridge into the navigator every page lives under.
+  Future<void> _showUpdatePopUp(RemoteRelease release) async {
+    final NavigatorState? navigator = rootNavigatorKey.currentState;
+
+    if (navigator == null) return;
+    await showDialog<void>(
+      context: navigator.context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.system_update_outlined),
+        title: const Text('Update available'),
+        content: Text(
+          'Expense Tracker ${release.version} is ready to download from the '
+          'Releases page. Your data and your Google Drive sign-in are kept.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Later'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              ref.read(routerProvider).push('/backup');
+            },
+            child: const Text('Review'),
+          ),
+        ],
+      ),
+    );
+    // Either answer is final for this launch; a rebuild may not re-open it.
+    _updateDialogOpen = false;
   }
 
   ThemeData _buildTheme(Brightness brightness) {
