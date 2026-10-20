@@ -291,15 +291,37 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   List<_Bucket> _weeklyBuckets(List<TransactionEntity> txns) {
     final MonthRange range = _range;
     final daysInMonth = range.dayCount;
+    final firstDay = range.start;
+    // weekday: Monday=1, Sunday=7. Days until the first Sunday:
+    final daysToFirstSunday = firstDay.weekday == 7 ? 0 : 7 - firstDay.weekday;
+    final firstSunday = daysToFirstSunday + 1;
+
     final totals = <int, double>{};
     for (final t in txns) {
-      final week = ((t.date.day - 1) ~/ 7) + 1;
+      final day = t.date.day;
+      int week;
+      if (day <= firstSunday) {
+        // Week 1: from the 1st up to and including the first Sunday
+        week = 1;
+      } else {
+        // Subsequent weeks: full Mon–Sun blocks
+        week = 2 + ((day - firstSunday - 1) ~/ 7);
+      }
       totals[week] = (totals[week] ?? 0) + t.amount;
     }
+
     final weeks = totals.keys.toList()..sort();
     return weeks.map((w) {
-      final startDay = (w - 1) * 7 + 1;
-      final endDay = (w * 7) > daysInMonth ? daysInMonth : (w * 7);
+      int startDay, endDay;
+      if (w == 1) {
+        startDay = 1;
+        endDay = firstSunday;
+      } else {
+        final weekOffset = w - 2;
+        startDay = firstSunday + 1 + (weekOffset * 7);
+        endDay = startDay + 6;
+      }
+      if (endDay > daysInMonth) endDay = daysInMonth;
       final start = range.day(startDay);
       final end = range.day(endDay);
       return _Bucket(
