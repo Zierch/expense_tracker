@@ -24,6 +24,13 @@ allow installation from your browser or file manager when prompted.
 > Drive export is limited. To be added, open an issue with the Google address
 > you want to use. The list is capped at 100 accounts by Google.
 
+> **Updates.** Newer releases are offered in the app itself: when a new version
+> is published on the Releases page of this repository, the app offers to
+> download and install it — it contacts GitHub's public release API, verifies
+> the APK against the checksum the release publishes, then opens Android's
+> installer. Nothing else leaves the device; the update check and the backup
+> are the only two networked features, both detailed in `PRIVACY.md`.
+
 Requires Android 7.0 or newer (minSdk 24).
 
 ## Features
@@ -39,7 +46,8 @@ Requires Android 7.0 or newer (minSdk 24).
 - Indonesian rupiah (IDR) formatting
 - Optional per-month JSON export to a `Expense Tracker` folder in your own
   Google Drive; re-exporting a month replaces its file instead of duplicating it
-- Follows your system light or dark theme
+- Follows your system light or dark theme, or force light/dark from the theme picker on the dashboard
+- Checks GitHub for a newer release on open (and on demand from Backup), downloads and installs it in place
 - Pull the dashboard down to re-run the queries behind the month on screen
 - Works entirely offline
 

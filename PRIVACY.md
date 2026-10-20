@@ -1,6 +1,6 @@
 # Privacy Policy — Expense Tracker
 
-_Last updated: 17 October 2026_
+_Last updated: 21 October 2026_
 
 Expense Tracker is an offline, Android-only personal finance app. This policy
 describes exactly what the app does with your information. It is written to be
@@ -10,9 +10,10 @@ read, not to be survived.
 
 The app has no servers, no account system of its own, no analytics, no crash
 reporting, and no advertising. Every transaction you enter stays in a private
-database on your phone. The only time the app itself sends anything off your
-device is when you yourself tap **Backup to Google Drive** for a specific month —
-and it goes to _your_ Google Drive, not to the developer. Android's own
+database on your phone. The app itself sends nothing off your device except in
+two cases, described in this policy: the backup **you** tap to Google Drive, and
+the update check it runs against GitHub — which involves no part of your data at
+all. Android's own
 system-level backup is switched off for this app, and the newer cross-platform
 transfer route has no counterpart for it to carry anything to; see "Android Auto
 Backup is turned off" below.
@@ -92,9 +93,35 @@ that address. It is used to grant access and for nothing else: no mailing list,
 no profiling, and no sharing. Ask through the issue tracker if you want it
 removed once you no longer need access.
 
+## Update checks
+
+The app can check for its own newer release. This is how it works, exactly:
+
+- **When:** once, shortly after the app opens, and whenever you tap *Check for
+  update* on the Backup screen. Nothing runs in the background.
+- **What is sent:** one HTTP request to GitHub's public API
+  (`api.github.com/repos/Zierch/expense_tracker/releases/latest`) asking for the
+  newest published release of the app. No account, no token, no identifier, and
+  no part of your data is attached — GitHub sees your IP address and the
+  request's User-Agent string, as it would any page load.
+- **What comes back:** the release tag, and the download address of its APK.
+  If the release is newer than your installed one, the app lets you download
+  that APK to its own cache and, after verifying it against the SHA-256
+  checksum published in the release notes itself, hands it to Android's
+  installer. You confirm every step; Android additionally asks, once per app,
+  for permission to install from this source on Android 8 and above.
+
+Declining the download installs nothing. Turning off network access to the app
+(skipping Wi-Fi/Mobile data for it in Android settings) removes these requests
+entirely; the app keeps working offline.
+
 ## Android permissions
 
-- `INTERNET` — required to reach Google Drive when you export.
+- `INTERNET` — required to reach Google Drive when you export, and to check for
+  and download app updates as described above.
+- `REQUEST_INSTALL_PACKAGES` — required so the app can hand the downloaded
+  update APK to Android's installer. It carries no data access; the user still
+  confirms each install.
 - `USE_BIOMETRIC` and `USE_FINGERPRINT` — these come from the `androidx.biometric`
   library, which Google's Sign-In SDK pulls in for its credential handling. This
   app itself does not use biometrics, and it never asks you for a fingerprint.
