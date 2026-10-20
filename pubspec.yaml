@@ -28,6 +28,14 @@ dependencies:
   http: ^1.2.0
   shared_preferences: ^2.2.3
   crypto: ^3.0.3
+  # Pinned while flutter/packages#194649 is open: the 2.5.x implementation of this
+  # package calls its Kotlin code through JNI, and R8 (on by default in release
+  # builds) renames kotlin.coroutines.Continuation, so the bound name no longer
+  # exists — exactly what happened in release v1.2.0 (splash that never ends).
+  # The pre-2.5 implementation does not use JNI and works under R8 as-is.
+  # "shared_preferences" up until the latest version still pins to this old
+  # implementation without loss of functionality.
+  shared_preferences_android: '>=2.4.28 <2.5.0'
 
 dev_dependencies:
   flutter_test:
