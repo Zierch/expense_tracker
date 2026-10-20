@@ -2,6 +2,14 @@
     <!-- Required for Google Sign-In and Google Drive uploads. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!--
+      In-app updates: the app downloads its own new release APK from the
+      Releases page and hands it to the platform installer. Android 8+ refuses
+      an ACTION_VIEW install intent unless the *requesting* app holds this
+      permission first, so that is what this declares. Without it the flow
+      would silently do nothing on 8.0+ where the pre-8 "unknown sources"
+      system setting went away. The user still confirms each install. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!--
       Backup is disabled on purpose. This app keeps personal financial records
       in its own SQLite database, and the supported way to back them up is the
       explicit "Backup to Google Drive" export. Leaving Auto Backup enabled
@@ -47,6 +55,19 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Shares exactly one folder — the install-download cache (see
+             res/xml/file_paths.xml) — with the platform package installer, so
+             the downloaded APK can be handed over without any wide-open file
+             access. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileProvider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"/>
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

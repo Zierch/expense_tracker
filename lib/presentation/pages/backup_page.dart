@@ -7,6 +7,7 @@ import 'package:expense_tracker/data/services/google_config.dart';
 import 'package:expense_tracker/data/services/google_drive_service.dart';
 import 'package:expense_tracker/domain/usecases/export_month_usecase.dart';
 import 'package:expense_tracker/presentation/providers/backup_providers.dart';
+import 'package:expense_tracker/presentation/providers/update_providers.dart';
 
 /// Signs in with Google and archives a month's transactions to Google Drive.
 class BackupPage extends ConsumerStatefulWidget {
@@ -138,6 +139,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               'the backup files it created itself — never the rest of your Drive.',
           tone: theme.colorScheme.primary,
         ),
+        const SizedBox(height: 12),
+        const _UpdateCard(),
         if (_error != null) ...<Widget>[
           const SizedBox(height: 12),
           _buildNotice(
@@ -258,6 +261,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        const _UpdateCard(),
         if (_result != null) ...<Widget>[
           const SizedBox(height: 12),
           _buildResult(_result!),
@@ -571,6 +576,162 @@ class _ButtonSpinner extends StatelessWidget {
       width: 18,
       height: 18,
       child: CircularProgressIndicator(strokeWidth: 2),
+    );
+  }
+}
+
+/// The "App updates" card: what runs now, what is newest, and one action per
+/// state of the update flow.
+///
+/// The app ships outside the Play Store, so updates arrive as an APK: check →
+/// download → hand the file to Android's installer. Every state has exactly one
+/// obvious action, and errors name what failed and offer the retry.
+class _UpdateCard extends ConsumerWidget {
+  const _UpdateCard();
+
+  static const String _firstRunNote =
+      'Android may ask, once, to allow installs from this app before the '
+      'installer opens.';
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ThemeData theme = Theme.of(context);
+    final AppUpdateState state = ref.watch(appUpdateControllerProvider);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(Icons.system_update_outlined,
+                    color: theme.colorScheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'App updates',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: state is UpdateChecking
+                      ? null
+                      : ref.read(appUpdateControllerProvider.notifier).checkNow,
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Check for update',
+                ),
+              ],
+            ),
+            switch (state) {
+              // Never checked: say so, and mention when it does happen on its
+              // own so a user can connect the banner up top to this page.
+              UpdateIdle() => const _UpdateText(
+                  'Not checked yet. The app checks when it opens; you can also '
+                  'run a check here at any time.',
+                ),
+              UpdateChecking() => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              UpdateUpToDate() => _UpdateText(
+                  'Up to date: version ${state.localVersion} is the newest '
+                  'published.',
+                ),
+              UpdateAvailable() => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    _UpdateText(
+                      'Version ${state.release.version} (${(state.release.sizeInBytes / 1024 / 1024).toStringAsFixed(1)} MB) is available.',
+                    ),
+                    const SizedBox(height: 4),
+                    const _UpdateText(
+                      '$_firstRunNote The new version keeps your local data '
+                      'and your Google Drive sign-in.',
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton.icon(
+                        onPressed: ref
+                            .read(appUpdateControllerProvider.notifier)
+                            .download,
+                        icon: const Icon(Icons.download_rounded),
+                        label: const Text('Download update'),
+                      ),
+                    ),
+                  ],
+                ),
+              UpdateDownloading() => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    LinearProgressIndicator(value: state.progress),
+                    const SizedBox(height: 4),
+                    _UpdateText(
+                      'Downloading… ${(state.progress * 100).round()}%',
+                    ),
+                  ],
+                ),
+              UpdateReady() => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const _UpdateText(
+                      'Downloaded and verified. $_firstRunNote',
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton.icon(
+                        onPressed: ref
+                            .read(appUpdateControllerProvider.notifier)
+                            .install,
+                        icon: const Icon(Icons.install_mobile),
+                        label: Text('Install version '
+                            '${state.release.version}'),
+                      ),
+                    ),
+                  ],
+                ),
+              UpdateFailed() => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    _UpdateText(state.message, tone: theme.colorScheme.error),
+                    const SizedBox(height: 4),
+                    const _UpdateText(
+                      'Nothing was changed — you can retry the check.',
+                    ),
+                  ],
+                ),
+            },
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Plain body text inside the updates card.
+class _UpdateText extends StatelessWidget {
+  const _UpdateText(this.message, {this.tone});
+  final String message;
+  final Color? tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return Text(
+      message,
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: tone ?? theme.textTheme.bodySmall?.color,
+      ),
     );
   }
 }

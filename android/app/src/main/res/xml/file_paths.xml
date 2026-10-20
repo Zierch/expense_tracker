@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The only thing FileProvider shares is the folder where in-app updates
+     land. Nothing else this app owns is reachable through the provider. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="apk" path="apk/" />
+</paths>

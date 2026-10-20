@@ -4,7 +4,9 @@ import 'package:expense_tracker/presentation/pages/home_page.dart';
 import 'package:expense_tracker/presentation/pages/add_transaction_page.dart';
 import 'package:expense_tracker/presentation/pages/statistics_page.dart';
 import 'package:expense_tracker/presentation/pages/backup_page.dart';
+import 'package:expense_tracker/presentation/providers/theme_provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -36,8 +38,16 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-void main() {
-  runApp(const ProviderScope(child: ExpenseTrackerApp()));
+Future<void> main() async {
+  // The theme choice is loaded *before* the app is run: the first frame must
+  // carry the remembered mode, not flash the system theme while prefs load.
+  WidgetsFlutterBinding.ensureInitialized();
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+
+  runApp(ProviderScope(
+    overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+    child: const ExpenseTrackerApp(),
+  ));
 }
 
 class ExpenseTrackerApp extends ConsumerWidget {
@@ -52,7 +62,7 @@ class ExpenseTrackerApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),
-      themeMode: ThemeMode.system,
+      themeMode: ref.watch(themeModeProvider),
       routerConfig: router,
     );
   }

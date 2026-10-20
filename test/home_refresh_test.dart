@@ -17,6 +17,7 @@ import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:expense_tracker/presentation/pages/home_page.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
+import 'package:expense_tracker/presentation/providers/update_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -82,7 +83,8 @@ class _CountingRepository implements TransactionRepository {
 /// Pumps the dashboard with [repository] behind it.
 ///
 /// No router is needed: `HomePage` only reaches for one from tap handlers, and this test
-/// never taps a row.
+/// never taps a row. The update controller is stubbed out — the real one touches the
+/// network and a MethodChannel, which no widget test should ever run for this suite.
 Future<void> _pumpHome(
   WidgetTester tester,
   AppDatabase db,
@@ -92,9 +94,28 @@ Future<void> _pumpHome(
     overrides: <Override>[
       databaseProvider.overrideWithValue(db),
       transactionRepositoryProvider.overrideWithValue(repository),
+      appUpdateControllerProvider.overrideWith(_NoAutoUpdate.new),
     ],
     child: const MaterialApp(home: HomePage()),
   ));
+}
+
+/// The update flow does not exist, as far as this test is concerned.
+class _NoAutoUpdate extends AppUpdateController {
+  @override
+  AppUpdateState build() => const UpdateIdle();
+
+  @override
+  Future<void> checkOnLaunch() async {}
+
+  @override
+  Future<void> checkNow() async {}
+
+  @override
+  Future<void> download() async {}
+
+  @override
+  Future<void> install() async {}
 }
 
 /// Drags the dashboard down far enough to arm the refresh indicator.

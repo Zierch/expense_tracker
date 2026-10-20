@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:expense_tracker/domain/entities/month_range.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
+import 'package:expense_tracker/presentation/providers/theme_provider.dart';
+import 'package:expense_tracker/presentation/providers/update_providers.dart';
 import 'package:expense_tracker/presentation/widgets/transaction_tile.dart';
 import 'package:expense_tracker/presentation/widgets/summary_card.dart';
 import 'package:go_router/go_router.dart';
@@ -17,17 +19,62 @@ class _HomePageState extends ConsumerState<HomePage> {
   DateTime _selectedMonth = DateTime.now();
 
   @override
+  void initState() {
+    super.initState();
+    // Check for a new release once, after the first frame: network work does
+    // not belong inside a build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(appUpdateControllerProvider.notifier).checkOnLaunch();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final MonthRange range = MonthRange.of(_selectedMonth);
-    
+
     final transactionsAsync = ref.watch(transactionsStreamProvider);
     final summaryAsync =
         ref.watch(summaryProvider(start: range.start, end: range.end));
+
+    // Announces a newer release once, when the check lands on it: tapping the
+    // banner reaches the full download and install flow on the Backup page.
+    ref.listen<AppUpdateState>(appUpdateControllerProvider, (previous, next) {
+      if (next is! UpdateAvailable || previous is UpdateAvailable) return;
+      final release = next.release;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentMaterialBanner()
+        ..showMaterialBanner(MaterialBanner(
+          content: Text(
+            'Expense Tracker ${release.version} is available — open Backup '
+            'to update.',
+          ),
+          leading: const Icon(Icons.system_update_outlined),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+                context.push('/backup');
+              },
+              child: const Text('Review'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+              child: const Text('Later'),
+            ),
+          ],
+        ));
+    });
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Expense Tracker'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.brightness_4_outlined),
+            onPressed: _pickTheme,
+            tooltip: 'Theme',
+          ),
           IconButton(
             icon: const Icon(Icons.analytics_outlined),
             onPressed: () => context.push('/statistics'),
@@ -118,6 +165,41 @@ class _HomePageState extends ConsumerState<HomePage> {
       ),
     );
   }
+
+  /// The theme picker: three radios, a tap applies the mode and closes.
+  Future<void> _pickTheme() async {
+    final ThemeMode current = ref.read(themeModeProvider);
+
+    await showDialog<ThemeMode>(
+      context: context,
+      builder: (dialogContext) => RadioGroup<ThemeMode>(
+        groupValue: current,
+        // One tap picks, remembers and closes: the dialog has no confirm step
+        // to forget about.
+        onChanged: (ThemeMode? mode) {
+          if (mode == null) return;
+          ref.read(themeModeProvider.notifier).set(mode);
+          Navigator.of(dialogContext).pop();
+        },
+        child: SimpleDialog(
+          title: const Text('Theme'),
+          children: <Widget>[
+            for (final ThemeMode mode in ThemeMode.values)
+              RadioListTile<ThemeMode>(
+                value: mode,
+                title: Text(_themeLabel(mode)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _themeLabel(ThemeMode mode) => switch (mode) {
+        ThemeMode.system => 'Follow the system',
+        ThemeMode.light => 'Light',
+        ThemeMode.dark => 'Dark',
+      };
 
   /// Re-runs the queries behind the month on screen.
   ///
