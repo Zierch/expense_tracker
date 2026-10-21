@@ -18,6 +18,11 @@ new capability, a change a user could point at and call new.
 Whatever moves, `+n` always goes up by one: Android refuses to install a build
 whose `versionCode` is not greater than the one already on the phone.
 
+Releases are published by pushing the version tag: `.github/workflows/release.yml`
+builds, signs and attaches the APK, using the notes committed at
+`docs/releases/v<version>.md`. Do not move or delete a published tag — phones
+may already have read it — fix forward with the next patch instead.
+
 ## Delete the branch after a pull request merges cleanly
 
 When a pull request merges without conflicts and the head branch holds no work

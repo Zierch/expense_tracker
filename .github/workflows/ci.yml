@@ -12,11 +12,11 @@
 # android/gradle.properties wants (`-Xmx8G`) and a WSL2 machine capped at 3 GB
 # cannot provide. A local Flutter SDK is not installed at all.
 #
-# Deliberately not here yet: building the release APK (it needs signing secrets,
-# and a debug-signed APK strands users on the next update — see README.md ->
-# "Building a release APK"), an emulator job (`flutter test` runs on the host
-# Dart VM and cannot exercise a real Android runtime), and attaching an APK to a
-# GitHub Release.
+# Deliberately not here: an emulator job (`flutter test` runs on the host Dart VM
+# and cannot exercise a real Android runtime), and building the release APK. That
+# last one lives in release.yml instead, triggered by a version tag, because it
+# needs the signing key: keeping it out of this workflow means a branch push can
+# never reach it.
 
 name: CI
 

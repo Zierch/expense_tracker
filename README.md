@@ -147,21 +147,52 @@ architecture, and you would share the right one for each phone.
 
 ### Publishing a release
 
-Attach the built APK **twice**, under both names — `expense-tracker-<version>.apk`
-and `app-release.apk` — because they are the same file and different phones look
-for different names:
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds, signs and
+publishes the APK when a version tag is pushed, so the published artifact is
+always the tagged commit rather than whatever was on a laptop.
+
+1. Write the notes to `docs/releases/v<version>.md`. If the first line is a
+   `# heading`, it becomes the release title; the build details (versionCode,
+   SHA-256, commit) are appended by the workflow, because they do not exist until
+   the APK does.
+2. Bump `version:` in `pubspec.yaml` — the last number by default, see
+   [AGENTS.md](AGENTS.md) — and commit it as `chore: release <version>`.
+3. Push that commit and wait for `CI` to be green.
+4. Tag it and push the tag:
+
+   ```bash
+   git tag v1.4.2
+   git push origin v1.4.2
+   ```
+
+The `Release` run waits for approval from the reviewers on the `release`
+environment, then runs the suite, builds, checks the signing certificate, and
+publishes the APK under **both** names — `expense-tracker-<version>.apk` and
+`app-release.apk`, the same bytes. A build older than v1.3.1 looks for the second
+name and nothing else, and its updater is already on phones, so publishing the
+new name alone leaves exactly those phones unable to update. Drop the second copy
+once no installed build older than v1.3.1 remains.
+
+If the run fails after the tag is published, fix forward with the next patch
+rather than moving or deleting the tag: the updater has already read it.
+
+**One-time setup.** The keystore must never be in the repository, so it travels
+as an environment secret:
 
 ```bash
-cp build/app/outputs/flutter-apk/app-release.apk /tmp/expense-tracker-1.4.0.apk
-cp build/app/outputs/flutter-apk/app-release.apk /tmp/app-release.apk
-gh release create v1.4.0 /tmp/expense-tracker-1.4.0.apk /tmp/app-release.apk
+base64 -w0 android/app/release-keystore.jks | gh secret set ANDROID_KEYSTORE_BASE64 --env release
+gh secret set ANDROID_STORE_PASSWORD --env release   # prompts for the value
+gh secret set ANDROID_KEY_ALIAS --env release
+gh secret set ANDROID_KEY_PASSWORD --env release
 ```
 
-A build older than v1.3.1 looks for `app-release.apk` and nothing else — its
-updater is already on phones and cannot be told about a new name — so publishing
-the new name alone leaves exactly those phones unable to update, complaining only
-that *the newest release does not carry the APK*. Drop the second copy once no
-installed build older than v1.3.1 remains.
+`ANDROID_KEYSTORE_BASE64` is the keystore file itself; the other three hold the
+values from `android/key.properties`. The `release` environment should name a
+required reviewer, so a run nobody approved cannot read the key. Anyone who can
+push a tag to this repository can reach those secrets — which is why cutting a
+release is a maintainer action. Building locally with
+`flutter build apk --release` still works and remains the fallback if CI cannot
+run; attach both names by hand in that case.
 
 ## Verifying a download
 

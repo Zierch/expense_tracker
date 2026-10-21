@@ -1,0 +1,164 @@
+# Builds and publishes the release APK when a version tag is pushed.
+#
+# The tag is the statement that this exact commit is the release, so the tag is
+# the trigger. The maintainer's laptop is deliberately no longer in the path: the
+# same commit is built every time, on a runner with the memory Gradle asks for
+# (android/gradle.properties wants -Xmx8G), and the APK that comes out is the one
+# the release notes describe.
+#
+# The signing material arrives as secrets scoped to the `release` environment, so
+# a run waits for the reviewers named there before it can read them. Two
+# consequences are load-bearing:
+#
+#   * the release certificate cannot be rotated — a new key means every phone has
+#     to uninstall and reinstall — so a leak is permanent. The approval gate and
+#     the tag-only trigger are what keep the key out of unreviewed runs.
+#   * anyone who can push a tag can reach the key, which makes tag pushes a
+#     maintainer action rather than a contributor one.
+#
+# The release is published with the APK under two names, `expense-tracker-<ver>.apk`
+# and `app-release.apk`, because builds older than v1.3.1 look for the second and
+# cannot be told about the first. They are the same bytes; see README.md ->
+# "Publishing a release".
+#
+# `ci.yml` still verifies every branch push. This workflow is the only one that
+# publishes anything, and it holds the only secrets in the repository.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+# Nothing here needs to read the repository's other contents, and the release
+# upload is the only write. Keep it that narrow: this job can reach the signing
+# key.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: build + publish
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same reason as in ci.yml: without the host SQLite build the
+      # database-backed tests report as skipped instead of failing, and a release
+      # gate that quietly covers less than it claims is worse than none.
+      - name: Install host SQLite
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      # Pinned to a commit rather than `@v2`: a moving tag on an action that runs
+      # beside the signing key would let its owner read the key by moving it.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # The updater compares the release tag against the installed versionName, so
+      # a tag that disagrees with pubspec.yaml offers phones a version that the
+      # APK they receive does not report — an update that comes back forever.
+      - name: Tag matches the version in pubspec.yaml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(sed -n 's/^version: *//p' pubspec.yaml)"
+          if [ "${version%%+*}" != "$tag" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match pubspec version ${version}"
+            exit 1
+          fi
+
+      # The notes are committed before the tag so they can be reviewed like any
+      # other change; the build details (versionCode, SHA-256) are appended below
+      # because they do not exist until the APK does.
+      - name: Release notes exist
+        run: |
+          notes="docs/releases/v${GITHUB_REF_NAME#v}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes is missing — write the release notes and commit them before tagging"
+            exit 1
+          fi
+
+      - run: flutter test
+
+      - name: Write the signing material
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is empty — set the release environment secrets (README.md -> Publishing a release)"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > android/app/release-keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=release-keystore.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - run: flutter build apk --release
+
+      # A debug-signed APK would install nowhere and update nobody: Android
+      # refuses to replace an app across signing keys. This is the check that the
+      # secrets really hold the release key rather than a placeholder.
+      - name: Verify the signing certificate
+        run: |
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
+          "$apksigner" verify --print-certs build/app/outputs/flutter-apk/app-release.apk \
+            | grep -qi 'b2f50e9c44f5724b9e17b57bd7b6a3e624f42cae' || {
+            echo "::error::the APK is not signed with the release certificate"
+            exit 1
+          }
+
+      - name: Name the APK and hash it
+        id: apk
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          out=build/app/outputs/flutter-apk
+          # The built file keeps the legacy name; a copy carries the versioned one.
+          cp "$out/app-release.apk" "$out/expense-tracker-$version.apk"
+          echo "sha=$(sha256sum "$out/app-release.apk" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.apk.outputs.version }}
+          SHA: ${{ steps.apk.outputs.sha }}
+        run: |
+          version_code="$(sed -n 's/^version: .*+//p' pubspec.yaml)"
+          notes="$(mktemp)"
+          cp "docs/releases/v$VERSION.md" "$notes"
+          cat >> "$notes" <<EOF
+
+          **Build details**
+
+          - package \`com.zierch.expense_tracker\`, versionCode \`$version_code\`, versionName \`$VERSION\`
+          - SHA-256 of this APK:
+            \`$SHA\`
+          - built by CI from tag \`$GITHUB_REF_NAME\` (\`$GITHUB_SHA\`); source: MIT, see \`LICENSE\`
+          EOF
+
+          # A notes file that opens with a heading gives the release its title.
+          title="$(sed -n '1s/^# //p' "docs/releases/v$VERSION.md")"
+          [ -n "$title" ] || title="v$VERSION"
+
+          # Both names carry the same bytes; see the header of this file.
+          gh release create "v$VERSION" \
+            "build/app/outputs/flutter-apk/expense-tracker-$VERSION.apk" \
+            "build/app/outputs/flutter-apk/app-release.apk" \
+            --title "$title" \
+            --notes-file "$notes"
+
+      # The runner is thrown away either way, but the key does not need to survive
+      # even this long.
+      - name: Remove the signing material
+        if: always()
+        run: rm -f android/app/release-keystore.jks android/key.properties
