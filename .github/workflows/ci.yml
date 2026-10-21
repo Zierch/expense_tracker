@@ -1,0 +1,73 @@
+# CI runs on every branch push, and only on push.
+#
+# Why push and not pull_request: the question being asked is whether *the branch*
+# is green, not whether its merge with main is green. A `pull_request` trigger
+# builds the merge branch (refs/pull/N/merge), which mixes in whatever landed on
+# main since the branch was cut. Pushing verifies the exact commit that was
+# pushed, and main gets verified again after the merge because main is just
+# another branch here.
+#
+# Why the work lives here and not on a laptop: this repository is public, so
+# Actions minutes are free and the runner has 4 vCPUs and 16 GB of RAM, which
+# android/gradle.properties wants (`-Xmx8G`) and a WSL2 machine capped at 3 GB
+# cannot provide. A local Flutter SDK is not installed at all.
+#
+# Deliberately not here yet: building the release APK (it needs signing secrets,
+# and a debug-signed APK strands users on the next update — see README.md ->
+# "Building a release APK"), an emulator job (`flutter test` runs on the host
+# Dart VM and cannot exercise a real Android runtime), and attaching an APK to a
+# GitHub Release.
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+
+jobs:
+  verify:
+    name: analyze + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The database-backed tests need SQLite for the *host*, which is a
+      # different build from the one the app ships (README.md -> "Tests").
+      # Without this they report as skipped rather than failed, so the suite
+      # would look green while covering less than it claims.
+      - name: Install host SQLite
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # The Drift, Freezed and Riverpod outputs are committed, so a change to a
+      # table or a provider that was never regenerated ships a stale database
+      # layer. Reading the generated file does not reveal that; regenerating and
+      # diffing does. pubspec.lock is committed too, so this compares like with
+      # like rather than whatever the packages published this week.
+      - name: Check generated code is in sync
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            git diff
+            echo "::error::Generated code is out of date. Run 'dart run build_runner build --delete-conflicting-outputs' and commit the result."
+            exit 1
+          fi
+
+      # Tests come before the lint gate: a style finding must never be the reason
+      # nobody learns whether the suite passes. They did hide it once — the first
+      # run of this workflow reported only the 36 analyze findings, and the test
+      # step was skipped.
+      - run: flutter test
+
+      # Infos are reported but do not fail the run: this repository carries a
+      # backlog of them (deprecated_member_use, prefer_final_locals, parameter
+      # order), and a gate that is red on arrival is a gate people learn to
+      # ignore. Errors and warnings still fail, which is what this check is for.
+      - run: flutter analyze --no-fatal-infos

@@ -89,6 +89,9 @@ you change a table definition, regenerate them with:
 dart run build_runner build --delete-conflicting-outputs
 ```
 
+CI regenerates them on every push and fails if the result differs from what is
+committed, so a generated file left stale does not stay unnoticed.
+
 ## Building a release APK
 
 Release builds are deliberately **not** signed with the debug keystore, and the
@@ -233,6 +236,34 @@ The database-backed tests need a SQLite library for the *host* to load, which is
 different build from the one the app ships: Windows uses the `winsqlite3.dll` that
 ships with the OS, Linux needs `libsqlite3` installed. Where none can be loaded those
 tests are reported as skipped rather than failed.
+
+## Continuous integration
+
+Every push to any branch runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+on GitHub Actions: `flutter analyze`, `flutter test`, and a check that the
+committed generated code still matches its sources. The trigger is a push rather
+than a pull request on purpose: a `pull_request` run checks out the merge branch,
+which mixes in whatever landed on `main` after your branch was cut, and the first
+thing worth knowing is whether *your* branch is green. `main` is covered by the
+same trigger, so a merge is verified again once it lands.
+
+The generated-code check regenerates the Drift, Freezed and Riverpod output and
+then fails if the working tree changed, which is what catches a table or a
+provider edited without regenerating. CI also installs `libsqlite3-dev`, so the
+database-backed tests run there instead of being reported as skipped.
+
+Analysis is deliberately not fatal on the `info` category: those findings are
+printed for whoever wants to act on them, but the run fails only on errors and
+warnings. The generated `*.g.dart` and `*.freezed.dart` files are excluded from
+analysis entirely, because their contents follow whichever version of the
+generator produced them rather than this project's lint configuration. The suite
+runs before the lint step, so a style finding cannot hide whether the tests pass.
+
+Two things it does not do. It does not build the release APK — that needs a
+signing keystore, which must never leave the maintainer's machine (see
+[Building a release APK](#building-a-release-apk)). And it does not exercise a
+real Android runtime: there is no emulator job, because `flutter test` runs on
+the host Dart VM, and an emulator would add minutes and flakiness for little.
 
 ## Project layout
 
