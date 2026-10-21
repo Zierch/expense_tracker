@@ -145,6 +145,24 @@ on every device, which is the simplest thing to share. If download size matters
 more, `flutter build apk --split-per-abi` writes one smaller APK per CPU
 architecture, and you would share the right one for each phone.
 
+### Publishing a release
+
+Attach the built APK **twice**, under both names — `expense-tracker-<version>.apk`
+and `app-release.apk` — because they are the same file and different phones look
+for different names:
+
+```bash
+cp build/app/outputs/flutter-apk/app-release.apk /tmp/expense-tracker-1.4.0.apk
+cp build/app/outputs/flutter-apk/app-release.apk /tmp/app-release.apk
+gh release create v1.4.0 /tmp/expense-tracker-1.4.0.apk /tmp/app-release.apk
+```
+
+A build older than v1.3.1 looks for `app-release.apk` and nothing else — its
+updater is already on phones and cannot be told about a new name — so publishing
+the new name alone leaves exactly those phones unable to update, complaining only
+that *the newest release does not carry the APK*. Drop the second copy once no
+installed build older than v1.3.1 remains.
+
 ## Verifying a download
 
 Nobody has to take the APK on faith: the release notes carry the SHA-256 of that
