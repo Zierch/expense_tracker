@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:expense_tracker/presentation/pages/home_page.dart';
 import 'package:expense_tracker/presentation/pages/add_transaction_page.dart';
@@ -11,6 +12,32 @@ import 'package:expense_tracker/presentation/providers/update_providers.dart';
 import 'package:expense_tracker/data/services/app_update_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// The backdrop the pages paint, shared with the system bars: the navigation bar
+/// has to look like the page behind it, not like a strip of another app.
+const Color _darkBackground = Color(0xFF0E1113);
+const Color _lightBackground = Color(0xFFF4F6F8);
+
+/// The system bars in the app's own brightness.
+///
+/// The theme is the user's choice, so it need not match the device's: a light
+/// system under an in-app dark theme left the navigation bar white, a strip of
+/// another app below the dashboard. The bars therefore follow this app's
+/// brightness rather than the Android theme's.
+///
+/// `SystemUiOverlayStyle.light` and `.dark` name their *icons*, not their
+/// background — `.light` is light icons, for a dark backdrop — which is the
+/// opposite of how the names read.
+SystemUiOverlayStyle systemUiStyleFor(Brightness brightness) {
+  final bool isDark = brightness == Brightness.dark;
+  return (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+      .copyWith(
+    systemNavigationBarColor: isDark ? _darkBackground : _lightBackground,
+    systemNavigationBarDividerColor: Colors.transparent,
+    systemNavigationBarIconBrightness:
+        isDark ? Brightness.light : Brightness.dark,
+  );
+}
 
 /// Root navigator key, so background code (the update pop-up) can reach the
 /// navigator that every page of the app lives under.
@@ -115,6 +142,15 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
       darkTheme: _buildTheme(Brightness.dark),
       themeMode: ref.watch(themeModeProvider),
       routerConfig: router,
+      // The system bars belong to the window, not to the widget tree, so nothing
+      // repaints them when the theme changes. Reaching them from here covers
+      // every page, including any that shows no app bar.
+      builder: (BuildContext context, Widget? child) {
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: systemUiStyleFor(Theme.of(context).brightness),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
   }
 
@@ -169,9 +205,9 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: isDark ? const Color(0xFF0E1113) : const Color(0xFFF4F6F8),
+      scaffoldBackgroundColor: isDark ? _darkBackground : _lightBackground,
       appBarTheme: AppBarTheme(
-        backgroundColor: isDark ? const Color(0xFF0E1113) : const Color(0xFFF4F6F8),
+        backgroundColor: isDark ? _darkBackground : _lightBackground,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
