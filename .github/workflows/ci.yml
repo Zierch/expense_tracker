@@ -60,5 +60,14 @@ jobs:
             exit 1
           fi
 
-      - run: flutter analyze
+      # Tests come before the lint gate: a style finding must never be the reason
+      # nobody learns whether the suite passes. They did hide it once — the first
+      # run of this workflow reported only the 36 analyze findings, and the test
+      # step was skipped.
       - run: flutter test
+
+      # Infos are reported but do not fail the run: this repository carries a
+      # backlog of them (deprecated_member_use, prefer_final_locals, parameter
+      # order), and a gate that is red on arrival is a gate people learn to
+      # ignore. Errors and warnings still fail, which is what this check is for.
+      - run: flutter analyze --no-fatal-infos

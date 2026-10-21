@@ -252,6 +252,13 @@ then fails if the working tree changed, which is what catches a table or a
 provider edited without regenerating. CI also installs `libsqlite3-dev`, so the
 database-backed tests run there instead of being reported as skipped.
 
+Analysis is deliberately not fatal on the `info` category: those findings are
+printed for whoever wants to act on them, but the run fails only on errors and
+warnings. The generated `*.g.dart` and `*.freezed.dart` files are excluded from
+analysis entirely, because their contents follow whichever version of the
+generator produced them rather than this project's lint configuration. The suite
+runs before the lint step, so a style finding cannot hide whether the tests pass.
+
 Two things it does not do. It does not build the release APK — that needs a
 signing keystore, which must never leave the maintainer's machine (see
 [Building a release APK](#building-a-release-apk)). And it does not exercise a
