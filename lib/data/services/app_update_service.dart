@@ -77,9 +77,10 @@ class AppUpdateService {
   final http.Client _client;
   final Uri _releasesUrl;
 
-  /// Every release's APK goes by this asset name, so finding the file to
-  /// download is a matter of the name the CI-independent release puts there.
-  static const String _apkFileName = 'app-release.apk';
+  /// The asset name releases up to and including v1.3.0 published: a name that
+  /// said nothing about which app — or which version — the file belongs to.
+  /// Still looked for, so phones on those versions can update themselves.
+  static const String _legacyApkFileName = 'app-release.apk';
 
   /// The checksum line in every release note, in exactly the form the notes
   /// use: the label, any whitespace (including the line break), an optional
@@ -90,9 +91,10 @@ class AppUpdateService {
     r'SHA-256 of this APK:\s*`?([a-f0-9]{64})`?',
   );
 
-  /// The APK's expected name on disk, built like
-  /// `expense-tracker-<version>.apk`, so re-downloading a later version cannot
-  /// "overwrite" an old one by accident.
+  /// The APK's name, like `expense-tracker-<version>.apk`: the asset name every
+  /// release from v1.3.1 on publishes, and the name the download lands under,
+  /// so a downloaded file says which app and which version it is, and
+  /// re-downloading a later version cannot "overwrite" an old one by accident.
   String apkFileNameFor(String version) => 'expense-tracker-$version.apk';
 
   /// Asks GitHub for the newest published release.
@@ -132,8 +134,9 @@ class AppUpdateService {
     }
 
     final Object? assets = decoded['assets'];
+    final String version = _stripTagPrefix(tagName);
     final Object? apkAsset = assets is List<Object?>
-        ? _findApkAsset(assets)
+        ? _findApkAsset(assets, version)
         : null;
     if (apkAsset is! Map<String, Object?>) {
       throw UpdateException('The newest release does not carry the APK.');
@@ -153,7 +156,7 @@ class AppUpdateService {
     final Object? body = decoded['body'];
 
     return RemoteRelease(
-      version: _stripTagPrefix(tagName),
+      version: version,
       tagName: tagName,
       downloadUrl: Uri.parse(rawDownloadUrl),
       sizeInBytes: rawSize,
@@ -162,14 +165,26 @@ class AppUpdateService {
     );
   }
 
-  /// The release's `app-release.apk` asset, or `null` when it carries none.
-  Object? _findApkAsset(List<Object?> assets) {
+  /// The release's APK asset, or `null` when it carries none to pick.
+  ///
+  /// The name a release uses moved from `app-release.apk` to
+  /// `expense-tracker-<version>.apk` in v1.3.1, so both are accepted; a lone
+  /// `.apk` under some other name is taken too, because a release pipeline that
+  /// renames the file should not silently leave every phone unable to update.
+  /// Two unexplained APKs are ambiguity, not an update, and are refused.
+  Object? _findApkAsset(List<Object?> assets, String version) {
+    final String wanted = apkFileNameFor(version);
+    Object? loneApk;
+    int apkCount = 0;
     for (final Object? asset in assets) {
-      if (asset is Map<String, Object?> && asset['name'] == _apkFileName) {
-        return asset;
-      }
+      if (asset is! Map<String, Object?>) continue;
+      final Object? name = asset['name'];
+      if (name is! String || !name.endsWith('.apk')) continue;
+      if (name == wanted || name == _legacyApkFileName) return asset;
+      loneApk = asset;
+      apkCount++;
     }
-    return null;
+    return apkCount == 1 ? loneApk : null;
   }
 
   /// Downloads [release] and verifies it against the checksum the release
@@ -185,9 +200,8 @@ class AppUpdateService {
     final Directory cache = await getTemporaryDirectory();
     final Directory apkDir = Directory(path.join(cache.path, 'apk'))
       ..create(recursive: true);
-    final File file = File(
-      path.join(apkDir.path, 'expense-tracker-${release.version}.apk'),
-    );
+    final File file =
+        File(path.join(apkDir.path, apkFileNameFor(release.version)));
 
     final http.StreamedResponse response =
         await _client.send(http.Request('GET', release.downloadUrl));

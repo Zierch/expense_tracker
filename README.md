@@ -151,8 +151,8 @@ Nobody has to take the APK on faith: the release notes carry the SHA-256 of that
 release's build, and its signing certificate is public. Before installing:
 
 ```bash
-sha256sum app-release.apk          # Windows: certutil -hashfile app-release.apk SHA256
-apksigner verify --print-certs app-release.apk
+sha256sum expense-tracker-1.3.1.apk          # Windows: certutil -hashfile expense-tracker-1.3.1.apk SHA256
+apksigner verify --print-certs expense-tracker-1.3.1.apk
 ```
 
 `apksigner` ships with the Android SDK's `build-tools` and needs a JDK on the

@@ -86,14 +86,14 @@ void main() {
       final AppUpdateService service =
           _serviceReturning((http.Request _) => http.Response(
                 _releaseJson(
-                  tag: 'v1.2.0',
+                  tag: 'v1.3.1',
                   body: _releaseBody,
                   assets: <Map<String, Object?>>[
                     <String, Object?>{
-                      'name': 'app-release.apk',
+                      'name': 'expense-tracker-1.3.1.apk',
                       'browser_download_url':
                           'https://github.com/Zierch/expense_tracker/releases/'
-                              'download/v1.2.0/app-release.apk',
+                              'download/v1.3.1/expense-tracker-1.3.1.apk',
                       'size': 1048576,
                     },
                   ],
@@ -103,12 +103,88 @@ void main() {
 
       final RemoteRelease release = await service.fetchLatestRelease();
 
-      expect(release.version, '1.2.0');
-      expect(release.tagName, 'v1.2.0');
+      expect(release.version, '1.3.1');
+      expect(release.tagName, 'v1.3.1');
       expect(release.publishedSha256, _publishedChecksum);
       expect(release.sizeInBytes, 1048576);
       expect(release.downloadUrl.host, 'github.com');
+      expect(release.downloadUrl.path, endsWith('expense-tracker-1.3.1.apk'));
+    });
+
+    test('the pre-1.3.1 asset name still updates those phones', () async {
+      // v1.3.0 and older published `app-release.apk`. Dropping it would strand
+      // exactly the phones that cannot read a name change from the future.
+      final AppUpdateService service =
+          _serviceReturning((http.Request _) => http.Response(
+                _releaseJson(
+                  tag: 'v1.2.0',
+                  assets: <Map<String, Object?>>[
+                    <String, Object?>{
+                      'name': 'app-release.apk',
+                      'browser_download_url':
+                          'https://github.com/Zierch/expense_tracker/releases/'
+                              'download/v1.2.0/app-release.apk',
+                      'size': 10,
+                    },
+                  ],
+                ),
+                200,
+              ));
+
+      final RemoteRelease release = await service.fetchLatestRelease();
+
       expect(release.downloadUrl.path, endsWith('app-release.apk'));
+    });
+
+    test('a lone .apk under an unexpected name is still found', () async {
+      final AppUpdateService service =
+          _serviceReturning((http.Request _) => http.Response(
+                _releaseJson(
+                  tag: 'v2.0.0',
+                  assets: <Map<String, Object?>>[
+                    <String, Object?>{
+                      'name': 'Expense-Tracker-2.0.0.apk',
+                      'browser_download_url': 'https://github.com/x/y.apk',
+                      'size': 10,
+                    },
+                  ],
+                ),
+                200,
+              ));
+
+      final RemoteRelease release = await service.fetchLatestRelease();
+
+      expect(release.version, '2.0.0');
+      expect(release.downloadUrl.path, endsWith('y.apk'));
+    });
+
+    test('two unexplained APKs are ambiguity, not an update', () async {
+      final AppUpdateService service = _serviceReturning((http.Request _) =>
+          http.Response(
+            _releaseJson(
+              tag: 'v2.0.0',
+              assets: <Map<String, Object?>>[
+                <String, Object?>{
+                  'name': 'arm64.apk',
+                  'browser_download_url': 'https://github.com/x/arm64.apk',
+                  'size': 10,
+                },
+                <String, Object?>{
+                  'name': 'armeabi.apk',
+                  'browser_download_url': 'https://github.com/x/armeabi.apk',
+                  'size': 10,
+                },
+              ],
+            ),
+            200,
+          ));
+
+      await expectLater(
+        () => service.fetchLatestRelease(),
+        throwsA(isA<UpdateException>()),
+        reason: 'installing the wrong architecture is worse than not offering '
+            'an update at all',
+      );
     });
 
     test('the request identifies the app to GitHub', () async {
