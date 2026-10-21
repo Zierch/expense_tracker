@@ -2,6 +2,22 @@
 
 Conventions for anyone — human or agent — changing this repository.
 
+## Version numbers
+
+`pubspec.yaml`'s `version:` is `x.y.z+n`, bumped by hand at release time, and the
+tag is `v` plus that same `x.y.z`.
+
+**Default to the last number.** `1.4.0` → `1.4.1`. A fix, a rename, a docs-only
+release, a dependency pin, a small behaviour tweak — anything a user would not
+call a new feature — moves the last number and nothing else. Most releases are
+this one, so `x.y.0` is the odd case, not the rule.
+
+The middle number is for a release that genuinely adds something: a new screen, a
+new capability, a change a user could point at and call new.
+
+Whatever moves, `+n` always goes up by one: Android refuses to install a build
+whose `versionCode` is not greater than the one already on the phone.
+
 ## Delete the branch after a pull request merges cleanly
 
 When a pull request merges without conflicts and the head branch holds no work
