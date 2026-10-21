@@ -144,7 +144,9 @@ void main() {
               'about the add path');
       // The loaded amount, so that a tap cannot land on a form that is still empty: that
       // would fail later as "the button did nothing", which reads like a different problem.
-      expect(find.text('10000'), findsOneWidget);
+      // Shown the way the field groups it — the transfer from a stored number to the
+      // screen is what this line is watching.
+      expect(find.text('10.000'), findsOneWidget);
       expect(repository.updated, isNull);
 
       await tester.tap(find.text('Update'));
