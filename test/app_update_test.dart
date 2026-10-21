@@ -143,6 +143,9 @@ void main() {
                   tag: 'v2.0.0',
                   assets: <Map<String, Object?>>[
                     <String, Object?>{
+                      // Capitalised differently from the published convention:
+                      // the name check is case-insensitive, so this is still the
+                      // release's own file.
                       'name': 'Expense-Tracker-2.0.0.apk',
                       'browser_download_url': 'https://github.com/x/y.apk',
                       'size': 10,
@@ -156,6 +159,103 @@ void main() {
 
       expect(release.version, '2.0.0');
       expect(release.downloadUrl.path, endsWith('y.apk'));
+    });
+
+    test('a renamed lone APK that names its version is still taken', () async {
+      // The fallback exists for a future naming change: as long as the file
+      // says which version it is, the updater can still hand it over.
+      final AppUpdateService service =
+          _serviceReturning((http.Request _) => http.Response(
+                _releaseJson(
+                  tag: 'v2.0.1',
+                  assets: <Map<String, Object?>>[
+                    <String, Object?>{
+                      'name': 'expense_tracker_2.0.1.apk',
+                      'browser_download_url': 'https://github.com/x/renamed.apk',
+                      'size': 10,
+                    },
+                  ],
+                ),
+                200,
+              ));
+
+      final RemoteRelease release = await service.fetchLatestRelease();
+
+      expect(release.downloadUrl.path, endsWith('renamed.apk'));
+    });
+
+    test('a lone APK named for another version is refused', () async {
+      final AppUpdateService service = _serviceReturning((http.Request _) =>
+          http.Response(
+            _releaseJson(
+              tag: 'v2.0.0',
+              assets: <Map<String, Object?>>[
+                <String, Object?>{
+                  'name': 'Expense-Tracker-1.0.0.apk',
+                  'browser_download_url': 'https://github.com/x/old.apk',
+                  'size': 10,
+                },
+              ],
+            ),
+            200,
+          ));
+
+      await expectLater(
+        () => service.fetchLatestRelease(),
+        throwsA(isA<UpdateException>()),
+        reason: 'a release whose only APK is named for a different version is '
+            'not an update this app may offer',
+      );
+    });
+
+    test('a near-miss version is not a version match', () async {
+      // `1.4.0` sits inside `11.4.0` as plain text; it does not name it.
+      final AppUpdateService service = _serviceReturning((http.Request _) =>
+          http.Response(
+            _releaseJson(
+              tag: 'v1.4.0',
+              assets: <Map<String, Object?>>[
+                <String, Object?>{
+                  'name': 'expense-tracker-11.4.0.apk',
+                  'browser_download_url': 'https://github.com/x/other.apk',
+                  'size': 10,
+                },
+              ],
+            ),
+            200,
+          ));
+
+      await expectLater(
+        () => service.fetchLatestRelease(),
+        throwsA(isA<UpdateException>()),
+      );
+    });
+
+    test('the named APK wins over other files in the same release', () async {
+      final AppUpdateService service =
+          _serviceReturning((http.Request _) => http.Response(
+                _releaseJson(
+                  tag: 'v1.4.0',
+                  assets: <Map<String, Object?>>[
+                    <String, Object?>{
+                      'name': 'mapping.txt',
+                      'browser_download_url': 'https://github.com/x/mapping.txt',
+                      'size': 10,
+                    },
+                    <String, Object?>{
+                      'name': 'expense-tracker-1.4.0.apk',
+                      'browser_download_url':
+                          'https://github.com/x/expense-tracker-1.4.0.apk',
+                      'size': 10,
+                    },
+                  ],
+                ),
+                200,
+              ));
+
+      final RemoteRelease release = await service.fetchLatestRelease();
+
+      expect(release.downloadUrl.path, endsWith('expense-tracker-1.4.0.apk'));
     });
 
     test('two unexplained APKs are ambiguity, not an update', () async {

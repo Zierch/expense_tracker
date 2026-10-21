@@ -170,19 +170,31 @@ class AppUpdateService {
   /// The name a release uses moved from `app-release.apk` to
   /// `expense-tracker-<version>.apk` in v1.3.1, so both are accepted; a lone
   /// `.apk` under some other name is taken too, because a release pipeline that
-  /// renames the file should not silently leave every phone unable to update.
-  /// Two unexplained APKs are ambiguity, not an update, and are refused.
+  /// renames the file should not silently leave every phone unable to update —
+  /// but only when its name states the release's version, since a lone stale
+  /// APK under an unversioned name would otherwise be offered as the newest
+  /// release. Two unexplained APKs are ambiguity, not an update, and are
+  /// refused.
   Object? _findApkAsset(List<Object?> assets, String version) {
     final String wanted = apkFileNameFor(version);
+    // `1.4.0` must not count as naming the version of `11.4.0`.
+    final RegExp namesVersion = RegExp(
+      '(?<![0-9])${RegExp.escape(version)}(?![0-9])',
+    );
     Object? loneApk;
     int apkCount = 0;
     for (final Object? asset in assets) {
       if (asset is! Map<String, Object?>) continue;
       final Object? name = asset['name'];
-      if (name is! String || !name.endsWith('.apk')) continue;
-      if (name == wanted || name == _legacyApkFileName) return asset;
-      loneApk = asset;
-      apkCount++;
+      if (name is! String || !name.toLowerCase().endsWith('.apk')) continue;
+      final String lowerCaseName = name.toLowerCase();
+      if (lowerCaseName == wanted || lowerCaseName == _legacyApkFileName) {
+        return asset;
+      }
+      if (namesVersion.hasMatch(lowerCaseName)) {
+        loneApk = asset;
+        apkCount++;
+      }
     }
     return apkCount == 1 ? loneApk : null;
   }
