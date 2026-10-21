@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
+import 'package:expense_tracker/presentation/widgets/idr_amount_input.dart';
 import 'package:go_router/go_router.dart';
 
 class AddTransactionPage extends ConsumerStatefulWidget {
@@ -17,8 +18,6 @@ class AddTransactionPage extends ConsumerStatefulWidget {
 }
 
 class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
-  static const int _maxAmountLength = 12; // up to 999,999,999,999
-
   final _formKey = GlobalKey<FormState>();
   String _type = 'expense';
   final _amountController = TextEditingController();
@@ -101,7 +100,7 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
     );
     setState(() {
       _type = transaction.type;
-      _amountController.text = transaction.amount.toStringAsFixed(0);
+      _amountController.text = formatIdrAmount(transaction.amount);
       _selectedCategoryId = transaction.categoryId;
       _selectedSubcategoryId = transaction.subcategoryId;
       _noteController.text = transaction.note ?? '';
@@ -172,19 +171,21 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
           controller: _amountController,
           decoration: const InputDecoration(
             labelText: 'Amount',
-            prefixText: 'Rp ',
+            // Decoration, not value: "Rp." cannot be typed over or deleted, and
+            // it is on screen before the first digit arrives.
+            prefixText: 'Rp. ',
+            floatingLabelBehavior: FloatingLabelBehavior.always,
             border: OutlineInputBorder(),
             hintText: '0',
           ),
           keyboardType: TextInputType.number,
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(_maxAmountLength),
-          ],
-          validator: (value) {
-            if (value == null || value.isEmpty) return 'Enter amount';
-            final amount = double.tryParse(value);
-            if (amount == null || amount <= 0) return 'Invalid amount';
+          // Grouping and the ceiling both live in the formatter, so the text the
+          // field holds is always the text the amount parses back from.
+          inputFormatters: <TextInputFormatter>[IdrAmountInputFormatter()],
+          validator: (String? value) {
+            final double? amount = parseIdrAmount(value ?? '');
+            if (amount == null) return 'Enter amount';
+            if (amount <= 0) return 'Invalid amount';
             return null;
           },
         ),
@@ -233,12 +234,16 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   }
 
   void _appendAmount(String text) {
-    final current = _amountController.text;
-    final next = current == '0' ? text : current + text;
-    if (next.length > _maxAmountLength) return;
-    _amountController.text = next;
-    _amountController.selection = TextSelection.fromPosition(
-      TextPosition(offset: next.length),
+    final String? next =
+        formatIdrDigits('${idrDigitsOf(_amountController.text)}$text');
+
+    // Past the ceiling the button does nothing, exactly as typing another digit
+    // would.
+    if (next == null) return;
+
+    _amountController.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
     );
   }
 
@@ -353,7 +358,9 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
       final transaction = TransactionEntity(
         id: widget.transactionId ?? 0,
         type: _type,
-        amount: double.parse(_amountController.text),
+        // The validator above has already rejected anything that does not
+        // parse, and anything that is not above zero.
+        amount: parseIdrAmount(_amountController.text)!,
         categoryId: _selectedCategoryId!,
         subcategoryId: _selectedSubcategoryId,
         note: _noteController.text.isEmpty ? null : _noteController.text,

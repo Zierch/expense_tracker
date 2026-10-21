@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
 import 'google_config.dart';
+import 'google_sign_in_memory.dart';
 
 /// A failure whose message is already phrased for the user.
 class BackupException implements Exception {
@@ -65,6 +66,10 @@ class GoogleDriveService {
   Future<void>? _initialization;
   StreamSubscription<GoogleSignInAuthenticationEvent>? _authSubscription;
   GoogleSignInAccount? _account;
+
+  /// Whether this device has signed in before, so the SDK is only asked to
+  /// restore a session where one could exist. See [restoreRememberedSignIn].
+  final GoogleSignInMemory _signInMemory = const GoogleSignInMemory();
 
   bool get isConfigured => GoogleConfig.isConfigured;
 
@@ -134,16 +139,22 @@ class GoogleDriveService {
       },
     );
 
-    try {
-      final GoogleSignInAccount? restored =
-          await _googleSignIn.attemptLightweightAuthentication();
-      if (restored != null) {
+    // `reportAllExceptions` is what tells a declined account sheet apart from a
+    // device that has no session at all — the two are the same `null` without
+    // it, and one of them has to be remembered differently. See
+    // [restoreRememberedSignIn].
+    await restoreRememberedSignIn(
+      _signInMemory,
+      () async {
+        final GoogleSignInAccount? restored = await _googleSignIn
+            .attemptLightweightAuthentication(reportAllExceptions: true);
+        if (restored == null) return false;
+
         _account = restored;
         _accountController.add(restored);
-      }
-    } on Object {
-      // No previously authorised account, or unsupported on this platform.
-    }
+        return true;
+      },
+    );
   }
 
   /// Opens the Google account picker and returns the signed-in account.
@@ -158,6 +169,9 @@ class GoogleDriveService {
       final GoogleSignInAccount account = await _googleSignIn.authenticate();
       _account = account;
       _accountController.add(account);
+      // From here on a launch may restore this session, and may therefore ask
+      // the SDK to look for one.
+      await _signInMemory.remember();
       return account;
     } on GoogleSignInException catch (error) {
       throw BackupException(_describeSignInError(error));
@@ -174,6 +188,8 @@ class GoogleDriveService {
       throw BackupException(_describeSignInError(error));
     }
     _account = null;
+    // Signing out is the user's answer: no launch should try to restore it.
+    await _signInMemory.forget();
   }
 
   /// Revokes this app's Drive authorisation, then signs out.
@@ -203,6 +219,7 @@ class GoogleDriveService {
       );
     }
     _account = null;
+    await _signInMemory.forget();
   }
 
   /// True when the Drive scope was already granted for the signed-in account.
