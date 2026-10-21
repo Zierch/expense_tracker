@@ -36,6 +36,12 @@ dependencies:
   # "shared_preferences" up until the latest version still pins to this old
   # implementation without loss of functionality.
   shared_preferences_android: '>=2.4.28 <2.5.0'
+  # Same generational split, and here it also decides whether the Android build
+  # needs the NDK: 2.3.x reaches Android through the `jni` packages, which pull in
+  # a native module and, with it, an NDK download at build time (the first CI
+  # release run failed on a corrupt NDK archive, before any Dart was compiled).
+  # 2.2.23 is the last release without that layer.
+  path_provider_android: '>=2.2.23 <2.3.0'
 
 dev_dependencies:
   flutter_test:
