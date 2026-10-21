@@ -162,7 +162,7 @@ final transactionsStreamProvider =
 
 typedef TransactionsStreamRef
     = AutoDisposeStreamProviderRef<List<TransactionEntity>>;
-String _$summaryHash() => r'32e0f094029a7b9cbdef3295365a38464aacf63b';
+String _$summaryHash() => r'91155ad6d5747f0e26133e436d7e4ea315025f75';
 
 /// Copied from Dart SDK
 class _SystemHash {

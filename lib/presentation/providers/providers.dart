@@ -56,5 +56,11 @@ Stream<List<TransactionEntity>> transactionsStream(Ref ref) {
 
 @riverpod
 Future<SummaryResult> summary(Ref ref, {DateTime? start, DateTime? end}) {
+  // The totals are computed in SQL, which knows nothing about the row stream, so
+  // without this line the card kept the numbers it was first built with: adding or
+  // deleting a transaction moved the list and left income/expense/balance behind until
+  // a pull-to-refresh or a restart. Watching the stream re-runs the queries below on
+  // every write. The value is deliberately unused — it is the subscription that matters.
+  ref.watch(transactionsStreamProvider);
   return ref.watch(getSummaryUseCaseProvider).call(start: start, end: end);
 }
