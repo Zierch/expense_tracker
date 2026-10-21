@@ -202,11 +202,26 @@ class AppDatabase extends _$AppDatabase {
     return (select(subcategories)..where((s) => s.categoryId.equals(categoryId))).get();
   }
 
+  /// Newest first, and repeatable.
+  ///
+  /// `date` is a calendar day rather than an instant (`add_transaction_page` stores it
+  /// that way), so a day's rows all tie on it. Without tie-breakers SQLite is free to
+  /// return them in any order, and the dashboard sorts in memory with `List.sort`,
+  /// which is not stable — so the same day's rows came back in whatever order SQLite
+  /// and the sort happened to produce, and the list looked shuffled between rebuilds.
+  List<OrderingTerm> get _newestFirst => [
+        OrderingTerm.desc(transactions.date),
+        OrderingTerm.desc(transactions.createdAt),
+        OrderingTerm.desc(transactions.id),
+      ];
+
   Future<List<TransactionWithNames>> getTransactionsWithJoinedNames() async {
-    final rows = await select(transactions).join([
+    final rows = await (select(transactions).join([
       innerJoin(categories, categories.id.equalsExp(transactions.categoryId)),
       leftOuterJoin(subcategories, subcategories.id.equalsExp(transactions.subcategoryId)),
-    ]).get();
+    ])
+          ..orderBy(_newestFirst))
+        .get();
     return rows.map((row) {
       return TransactionWithNames(
         transaction: row.readTable(transactions),
@@ -217,10 +232,13 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Stream<List<TransactionWithNames>> watchTransactionsWithJoinedNames() {
-    return select(transactions).join([
+    return (select(transactions).join([
       innerJoin(categories, categories.id.equalsExp(transactions.categoryId)),
       leftOuterJoin(subcategories, subcategories.id.equalsExp(transactions.subcategoryId)),
-    ]).watch().map((rows) {
+    ])
+          ..orderBy(_newestFirst))
+        .watch()
+        .map((rows) {
       return rows.map((row) {
         return TransactionWithNames(
           transaction: row.readTable(transactions),

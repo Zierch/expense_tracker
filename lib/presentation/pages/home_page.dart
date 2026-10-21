@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/entities/month_range.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
 import 'package:expense_tracker/presentation/providers/theme_provider.dart';
@@ -68,7 +69,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                 final filtered = transactions
                     .where((t) => range.contains(t.date))
                     .toList()
-                  ..sort((a, b) => b.date.compareTo(a.date));
+                  // Sorted by the shared comparator rather than by `date` alone, which
+                  // left same-day rows in an order that changed on every rebuild.
+                  ..sort(newestFirst);
 
                 if (filtered.isEmpty) {
                   return const SliverFillRemaining(

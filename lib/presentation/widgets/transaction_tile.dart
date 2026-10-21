@@ -5,6 +5,14 @@ import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 class TransactionTile extends StatelessWidget {
   final TransactionEntity transaction;
   final VoidCallback onTap;
+
+  /// Asks the user to confirm and, only on confirmation, deletes the row.
+  ///
+  /// A `void` callback on purpose: the tile never completes a dismissal of its own. It
+  /// answers `false` from `confirmDismiss` in every case — cancel, and after a successful
+  /// delete — leaving the row stream the only thing that decides what the list contains.
+  /// Letting the dismissal complete is what lost a cancelled row: `onDismissed` had
+  /// already taken the tile out of the list, with nothing left to put it back.
   final VoidCallback onDelete;
 
   const TransactionTile({
@@ -34,7 +42,16 @@ class TransactionTile extends StatelessWidget {
         ),
         child: const Icon(Icons.delete_outline, color: Colors.white),
       ),
-      onDismissed: (_) => onDelete(),
+      // Confirming happens in `confirmDismiss`, not `onDismissed`. `onDismissed` means
+      // the tile has already been taken out of the list, so cancelling the dialog inside
+      // it had nothing left to restore the row with: it disappeared until the app was
+      // restarted. Here the answer is `false` either way — a cancelled delete springs the
+      // tile back, and a confirmed one is dropped by the row stream once the write lands,
+      // which keeps the stream the single source of truth for what the list contains.
+      confirmDismiss: (_) async {
+        onDelete();
+        return false;
+      },
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
