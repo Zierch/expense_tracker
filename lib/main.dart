@@ -28,6 +28,16 @@ const Color _lightBackground = Color(0xFFF4F6F8);
 /// `SystemUiOverlayStyle.light` and `.dark` name their *icons*, not their
 /// background — `.light` is light icons, for a dark backdrop — which is the
 /// opposite of how the names read.
+///
+/// Android 15 and newer ignore [SystemUiOverlayStyle.systemNavigationBarColor]
+/// for an app targeting 35 or higher: the bar is made transparent and the system
+/// lays a *contrast scrim* over it, 80% white or 80% black, depending on which
+/// way it believes the app points. On a Xiaomi on Android 16 it believed "light"
+/// under an in-app dark theme and the dark bar came out `#CFCFD0` — this app's
+/// colour with white painted over it. The colour below is therefore only a hint
+/// for older Androids; the scrim itself is switched off in the four Android
+/// themes under `android/app/src/main/res/` (`enforceNavigationBarContrast`),
+/// which is what leaves the bar transparent for the page to show through.
 SystemUiOverlayStyle systemUiStyleFor(Brightness brightness) {
   final bool isDark = brightness == Brightness.dark;
   return (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)

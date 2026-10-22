@@ -5,6 +5,14 @@
         <!-- Show a splash screen on the activity. Automatically removed when
              the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <!-- The app paints its own page colour behind the bars and tells the
+             system so at runtime (see `systemUiStyleFor` in lib/main.dart).
+             Android's automatic contrast scrim would otherwise be laid over
+             that colour, and on a Xiaomi on Android 16 it picked a white one
+             under a dark theme. -->
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <!-- Light icons on a dark bar. -->
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
     <!-- Theme applied to the Android Window as soon as the process has started.
          This theme determines the color of the Android Window while your
@@ -14,5 +22,13 @@
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
+        <!-- The app paints its own page colour behind the bars and tells the
+             system so at runtime (see `systemUiStyleFor` in lib/main.dart).
+             Android's automatic contrast scrim would otherwise be laid over
+             that colour, and on a Xiaomi on Android 16 it picked a white one
+             under a dark theme. -->
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <!-- Light icons on a dark bar. -->
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>
