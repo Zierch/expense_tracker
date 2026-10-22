@@ -38,6 +38,8 @@ Requires Android 7.0 or newer (minSdk 24).
 - Add, edit and delete income and expense transactions
 - Categories and subcategories, kept separate for income and expense
 - Monthly summary: total income, total expense, balance
+- Hide or show the balance with the eye on that card; the choice is remembered
+  for the next launch
 - Weekly summary showing one total per week, with daily and weekly breakdowns
   kept as separate views
 - Statistics split into an Expense tab and an Income tab, with a category-by-
