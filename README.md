@@ -46,6 +46,9 @@ Requires Android 7.0 or newer (minSdk 24).
 - Indonesian rupiah (IDR) formatting
 - Optional per-month JSON export to a `Expense Tracker` folder in your own
   Google Drive; re-exporting a month replaces its file instead of duplicating it
+- PDF report for any date range, with totals, a breakdown per category and every
+  transaction; shared straight to Files or a chat from Android's share sheet, and
+  no Google account needed
 - Follows your system light or dark theme, or force light/dark from the theme picker on the dashboard
 - Checks GitHub for a newer release on open (and on demand from Backup), downloads and installs it in place
 - Pull the dashboard down to re-run the queries behind the month on screen
@@ -63,6 +66,7 @@ Requires Android 7.0 or newer (minSdk 24).
 | Value types | Freezed |
 | Formatting | intl |
 | Sign-in and upload | `google_sign_in` plus the Drive v3 REST API |
+| PDF report | `pdf` to draw it, `printing` to hand it to the share sheet |
 
 The app is deliberately Android-only. Drift needs a native SQLite library, so
 there is no web target and `flutter run -d chrome` will not work.

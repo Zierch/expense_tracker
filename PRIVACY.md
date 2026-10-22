@@ -10,10 +10,11 @@ read, not to be survived.
 
 The app has no servers, no account system of its own, no analytics, no crash
 reporting, and no advertising. Every transaction you enter stays in a private
-database on your phone. The app itself sends nothing off your device except in
-two cases, described in this policy: the backup **you** tap to Google Drive, and
-the update check it runs against GitHub — which involves no part of your data at
-all. Android's own
+database on your phone. The app sends nothing off your device unless you hand it
+a destination yourself: the backup **you** tap to Google Drive, and the PDF
+report **you** share to an app of your choosing. The one thing it does on its own
+is the update check against GitHub, which involves no part of your data at all.
+Android's own
 system-level backup is switched off for this app, and the newer cross-platform
 transfer route has no counterpart for it to carry anything to; see "Android Auto
 Backup is turned off" below.
@@ -59,6 +60,21 @@ Drive.
 
 Re-exporting the same month replaces the previous file rather than adding a
 second copy.
+
+### When you export a PDF report
+
+On the Backup screen you can also build a PDF of any date range. This is a local
+file, not an upload:
+
+1. The app draws the report on your phone and writes it to its own private cache
+   area.
+2. Android's share sheet opens, and you choose where it goes — Files, a chat app,
+   mail, or a PDF viewer.
+
+The app keeps no second copy of that file, and nothing about it is sent to the
+developer or to Google: whoever receives the PDF is whoever you picked. Treat the
+file as you would any document containing your transactions, including any notes
+you typed.
 
 ## What the app does not collect
 
