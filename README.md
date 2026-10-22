@@ -177,6 +177,19 @@ The `Release` run waits for approval from the reviewers on the `release`
 environment, then runs the suite, builds, checks the signing certificate, and
 publishes the APK as `expense-tracker-<version>.apk`.
 
+Before it writes the signing material it asks GitHub two questions about the
+tagged commit: is it on `main`, and did that commit's `CI` run complete
+successfully. A tag on a commit that never ran CI, on a commit whose run failed,
+or on a commit that is not on `main` stops there — the tag stays, no release is
+created, and the next patch fixes it forward. This is what enforces step 3 below
+rather than trusting it; if a tag was pushed while CI was still running, re-run
+the failed jobs once it finishes.
+
+Nothing is published when anything fails, either: `Publish the release` is the
+last step that does anything, so a failing test, a failed signature check or a
+failed APK build leaves no release — and no release means the updater offers
+phones nothing.
+
 The same workflow can be run by hand, for testing that build without cutting a
 version — **Actions → Release → Run workflow** on the branch you want. It runs
 the same steps against the same signing key, so a green run means the APK builds

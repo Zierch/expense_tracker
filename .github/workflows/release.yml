@@ -40,8 +40,13 @@ on:
 # Nothing here needs to read the repository's other contents, and the release
 # upload is the only write. Keep it that narrow: this job can reach the signing
 # key.
+#
+# `actions: read` is for the guard below, which asks GitHub whether this commit
+# is on main and whether its CI run passed. Read-only, and it runs before any
+# step touches the key.
 permissions:
   contents: write
+  actions: read
 
 jobs:
   release:
@@ -50,6 +55,45 @@ jobs:
     environment: release
     steps:
       - uses: actions/checkout@v4
+
+      # A tag is the claim that this commit is the release; CI is the verdict on
+      # whether it may be one. Ask GitHub for that verdict rather than repeating
+      # the gate here, where it would drift from ci.yml — release.yml runs the
+      # suite but not the analyze or generated-code checks.
+      #
+      # Both questions run before the signing material is written, and both fail
+      # closed: a commit with no CI run is not a commit that passed CI, and a
+      # commit off main is not one the repository agreed to ship. Failing here
+      # creates no release, which is the point — the tag stays, the phones see
+      # nothing, and the next patch fixes it forward.
+      - name: The tagged commit passed CI on main
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          relation="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$GITHUB_SHA" --jq .status)"
+          case "$relation" in
+            behind|identical) echo "on main ($relation)" ;;
+            *)
+              echo "::error::tag $GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main ($relation)"
+              exit 1
+              ;;
+          esac
+
+          ci="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&per_page=1" \
+            --jq 'if (.workflow_runs | length) == 0 then "none" else (.workflow_runs[0] | "\(.status)/\(.conclusion)") end')"
+          case "$ci" in
+            completed/success) echo "CI for $GITHUB_SHA: $ci" ;;
+            none)
+              echo "::error::no CI run found for $GITHUB_SHA — an unverified commit cannot be a release"
+              exit 1
+              ;;
+            *)
+              echo "::error::CI for $GITHUB_SHA is '$ci', not a completed success"
+              exit 1
+              ;;
+          esac
 
       # Same reason as in ci.yml: without the host SQLite build the
       # database-backed tests report as skipped instead of failing, and a release

@@ -23,6 +23,12 @@ builds, signs and attaches the APK, using the notes committed at
 `docs/releases/v<version>.md`. Do not move or delete a published tag — phones
 may already have read it — fix forward with the next patch instead.
 
+The workflow will not publish from a tag that CI has not passed: before it writes
+the signing material it checks that the tagged commit is on `main` and that the
+commit's `CI` run completed successfully, so a tag cannot outrun CI. A failing
+test or a failing APK build publishes nothing either — the release is the last
+step, and a release that does not exist is one no phone is offered.
+
 That workflow's one fragile step is `Install host SQLite`, which talks to a
 package mirror rather than to GitHub: it hung twice for around 20 minutes while
 the same step took 5 seconds earlier the same day. It is bounded now — a five
