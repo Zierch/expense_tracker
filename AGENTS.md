@@ -23,12 +23,24 @@ builds, signs and attaches the APK, using the notes committed at
 `docs/releases/v<version>.md`. Do not move or delete a published tag — phones
 may already have read it — fix forward with the next patch instead.
 
+The workflow will not publish from a tag that CI has not passed: before it writes
+the signing material it checks that the tagged commit is on `main` and that the
+commit's `CI` run completed successfully, so a tag cannot outrun CI. A failing
+test or a failing APK build publishes nothing either — the release is the last
+step, and a release that does not exist is one no phone is offered.
+
 That workflow's one fragile step is `Install host SQLite`, which talks to a
-package mirror rather than to GitHub: it has hung once for 21 minutes while the
-same step took 5 seconds earlier the same day. A run parked on that step is a
-stuck mirror, not a slow build — cancel it, re-run it, and if it hangs twice
-build the release locally and attach the APK by hand
-(`README.md` → *Continuous integration* and *Publishing a release*).
+package mirror rather than to GitHub: it hung twice for around 20 minutes while
+the same step took 5 seconds earlier the same day. It is bounded now — a five
+minute cap, retried fetches — so a stuck mirror fails the step instead of parking
+a run beside the signing key. If it fails twice in a row, build the release
+locally and attach the APK by hand (`README.md` → *Continuous integration* and
+*Publishing a release*).
+
+To test that build without cutting a version, run the workflow by hand
+(`Actions` → `Release` → `Run workflow`): same steps, same signing key, nothing
+published, and the APK arrives as a workflow artifact. It still waits for the
+`release` environment's approval, which only the reviewer named there can give.
 
 ## Delete the branch after a pull request merges cleanly
 

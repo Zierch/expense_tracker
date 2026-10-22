@@ -37,12 +37,26 @@ jobs:
       # would look green while covering less than it claims.
       #
       # This is the only step that talks to a package mirror, and it has hung
-      # there: 21 minutes against 5 seconds for the same step earlier. If a run
-      # parks here while the steps below stay queued, the mirror is stuck, not
-      # the build — cancel and re-run; README.md -> "Continuous integration" has
-      # the timeouts to add when it next bites.
+      # there twice — 21 minutes against 5 seconds for the same step earlier the
+      # same day. It is bounded now: the step fails in five minutes instead of
+      # parking, and the fetch retries the mirror. The same step lives in
+      # release.yml; keep the two in step.
+      #
+      # The short-circuit asks about the *dev* package rather than for a
+      # `libsqlite3.so` somewhere in the loader cache. `libsqlite3.so.0` ships
+      # with the image, the tests open the unversioned name that only the dev
+      # package provides, so the looser check would skip the install and quietly
+      # turn the database tests into skips — the thing this step exists to stop.
       - name: Install host SQLite
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+        timeout-minutes: 5
+        run: |
+          if dpkg -s libsqlite3-dev >/dev/null 2>&1; then
+            echo "libsqlite3-dev is already installed; nothing to fetch"
+            exit 0
+          fi
+          apt_options='-o Acquire::http::Timeout=20 -o Acquire::Retries=3'
+          sudo apt-get update $apt_options
+          sudo apt-get install -y $apt_options libsqlite3-dev
 
       - uses: subosito/flutter-action@v2
         with:
