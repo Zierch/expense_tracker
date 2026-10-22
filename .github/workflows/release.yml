@@ -16,10 +16,11 @@
 #   * anyone who can push a tag can reach the key, which makes tag pushes a
 #     maintainer action rather than a contributor one.
 #
-# The release is published with the APK under two names, `expense-tracker-<ver>.apk`
-# and `app-release.apk`, because builds older than v1.3.1 look for the second and
-# cannot be told about the first. They are the same bytes; see README.md ->
-# "Publishing a release".
+# The release is published with the APK under one name, `expense-tracker-<ver>.apk`.
+# Releases used to carry a second copy as `app-release.apk`, because builds older
+# than v1.3.1 look for that name and nothing else; v1.4.3 was the last release
+# that needed it, and every phone on those builds has since updated. See
+# README.md -> "Publishing a release".
 #
 # `ci.yml` still verifies every branch push. This workflow is the only one that
 # publishes anything, and it holds the only secrets in the repository.
@@ -122,9 +123,10 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           out=build/app/outputs/flutter-apk
-          # The built file keeps the legacy name; a copy carries the versioned one.
+          # Flutter names its output `app-release.apk`; the release carries it
+          # under a name that says which app and which version it is.
           cp "$out/app-release.apk" "$out/expense-tracker-$version.apk"
-          echo "sha=$(sha256sum "$out/app-release.apk" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(sha256sum "$out/expense-tracker-$version.apk" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Publish the release
@@ -150,10 +152,9 @@ jobs:
           title="$(sed -n '1s/^# //p' "docs/releases/v$VERSION.md")"
           [ -n "$title" ] || title="v$VERSION"
 
-          # Both names carry the same bytes; see the header of this file.
+          # One asset, under the name that says what it is; see the header.
           gh release create "v$VERSION" \
             "build/app/outputs/flutter-apk/expense-tracker-$VERSION.apk" \
-            "build/app/outputs/flutter-apk/app-release.apk" \
             --title "$title" \
             --notes-file "$notes"
 

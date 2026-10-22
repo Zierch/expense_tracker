@@ -171,11 +171,14 @@ always the tagged commit rather than whatever was on a laptop.
 
 The `Release` run waits for approval from the reviewers on the `release`
 environment, then runs the suite, builds, checks the signing certificate, and
-publishes the APK under **both** names — `expense-tracker-<version>.apk` and
-`app-release.apk`, the same bytes. A build older than v1.3.1 looks for the second
-name and nothing else, and its updater is already on phones, so publishing the
-new name alone leaves exactly those phones unable to update. Drop the second copy
-once no installed build older than v1.3.1 remains.
+publishes the APK as `expense-tracker-<version>.apk`.
+
+Releases up to v1.4.3 carried a second copy under `app-release.apk`, because a
+build older than v1.3.1 looks for that name and nothing else, and its updater is
+already on phones. Publishing the new name alone would have left exactly those
+phones unable to update; the duplicate was dropped once nobody was still on one.
+`apkFileNameFor()` still accepts the old name, so a release that carries only it
+— an old one, or a hand-made upload — remains updatable.
 
 If the run fails after the tag is published, fix forward with the next patch
 rather than moving or deleting the tag: the updater has already read it.
@@ -196,7 +199,7 @@ required reviewer, so a run nobody approved cannot read the key. Anyone who can
 push a tag to this repository can reach those secrets — which is why cutting a
 release is a maintainer action. Building locally with
 `flutter build apk --release` still works and remains the fallback if CI cannot
-run; attach both names by hand in that case.
+run; attach `expense-tracker-<version>.apk` by hand in that case.
 
 ## Verifying a download
 
