@@ -34,7 +34,11 @@ class MonthSelector extends StatelessWidget {
     return Align(
       alignment: Alignment.centerLeft,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+        // `only` rather than `fromLTRB(16, 16, 16, 0)`: the guard in
+        // `test/month_range_test.dart` scans the app for the literal `, 0)` to
+        // keep day-zero month arithmetic in one place, and it cannot tell a
+        // padding from a date.
+        padding: const EdgeInsets.only(left: 16, right: 16, top: 16),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: () async {
@@ -136,7 +140,7 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
 
     return AlertDialog(
       title: const Text('Select month'),
-      contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+      contentPadding: const EdgeInsets.only(left: 24, right: 24, top: 8),
       content: SizedBox(
         width: 320,
         child: Column(

@@ -118,8 +118,26 @@ void main() {
             'selected before: the dashboard reads year and month only');
   });
 
-  testWidgets('months outside the bounds are shown but not offered',
+  testWidgets('the earliest bound is a month, not the year it sits in',
       (tester) async {
+    await _pumpPicker(
+      tester,
+      selected: DateTime(2020, 8),
+      firstMonth: DateTime(2020, 6),
+      lastMonth: DateTime(2026, 10, 22),
+      onResult: (_) {},
+    );
+
+    expect(find.text('Jan'), findsOneWidget,
+        reason: 'a month that cannot be picked is visible rather than missing');
+    expect(_monthOffered(tester, 'Jun'), isTrue);
+    expect(_monthOffered(tester, 'May'), isFalse,
+        reason: 'the bound is the month itself, so it bites inside 2020');
+    expect(_monthOffered(tester, 'Dec'), isTrue,
+        reason: 'and it does not carry over to the rest of that year');
+  });
+
+  testWidgets('the newest bound bites inside the last year', (tester) async {
     await _pumpPicker(
       tester,
       selected: DateTime(2026, 3),
@@ -128,11 +146,6 @@ void main() {
       onResult: (_) {},
     );
 
-    expect(find.text('Jan'), findsOneWidget,
-        reason: 'a month that cannot be picked is visible rather than missing');
-    expect(_monthOffered(tester, 'Jun'), isTrue,
-        reason: 'the bound is the month itself, not the year it sits in');
-    expect(_monthOffered(tester, 'May'), isFalse);
     expect(_monthOffered(tester, 'Oct'), isTrue,
         reason: "today's month is the newest there is data for");
     expect(_monthOffered(tester, 'Nov'), isFalse,
