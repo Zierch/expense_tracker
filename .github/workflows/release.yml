@@ -31,6 +31,12 @@ on:
   push:
     tags: ['v*']
 
+  # A manual run exists for testing the build without cutting a version: the same
+  # steps and the same signing, but only a tag publishes, so no run started here
+  # can reach a release. It still stops at the `release` environment gate,
+  # because it reads the same key.
+  workflow_dispatch:
+
 # Nothing here needs to read the repository's other contents, and the release
 # upload is the only write. Keep it that narrow: this job can reach the signing
 # key.
@@ -47,12 +53,20 @@ jobs:
 
       # Same reason as in ci.yml: without the host SQLite build the
       # database-backed tests report as skipped instead of failing, and a release
-      # gate that quietly covers less than it claims is worse than none. Same
-      # hazard too - this is the one step that talks to a package mirror, and a
-      # hang here looks like a slow build: cancel and re-run, or cut the release
-      # locally (README.md -> "Continuous integration").
+      # gate that quietly covers less than it claims is worse than none.
+      #
+      # Bounded the same way as in ci.yml: the mirror has hung twice now, once
+      # for 21 minutes, so the step is capped and the fetch retries.
       - name: Install host SQLite
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+        timeout-minutes: 5
+        run: |
+          if dpkg -s libsqlite3-dev >/dev/null 2>&1; then
+            echo "libsqlite3-dev is already installed; nothing to fetch"
+            exit 0
+          fi
+          apt_options='-o Acquire::http::Timeout=20 -o Acquire::Retries=3'
+          sudo apt-get update $apt_options
+          sudo apt-get install -y $apt_options libsqlite3-dev
 
       # Pinned to a commit rather than `@v2`: a moving tag on an action that runs
       # beside the signing key would let its owner read the key by moving it.
@@ -66,7 +80,10 @@ jobs:
       # The updater compares the release tag against the installed versionName, so
       # a tag that disagrees with pubspec.yaml offers phones a version that the
       # APK they receive does not report — an update that comes back forever.
+      # A manual run has no tag to compare against, which is what it is for: the
+      # build is the thing under test, not the release paperwork.
       - name: Tag matches the version in pubspec.yaml
+        if: github.event_name == 'push'
         run: |
           tag="${GITHUB_REF_NAME#v}"
           version="$(sed -n 's/^version: *//p' pubspec.yaml)"
@@ -79,6 +96,7 @@ jobs:
       # other change; the build details (versionCode, SHA-256) are appended below
       # because they do not exist until the APK does.
       - name: Release notes exist
+        if: github.event_name == 'push'
         run: |
           notes="docs/releases/v${GITHUB_REF_NAME#v}.md"
           if [ ! -f "$notes" ]; then
@@ -124,15 +142,35 @@ jobs:
       - name: Name the APK and hash it
         id: apk
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            # A manual run is a branch, not a version, so the file says which
+            # version it holds and which commit it came from.
+            version="$(sed -n 's/^version: *//p' pubspec.yaml)"
+            version="${version%%+*}-manual-${GITHUB_SHA:0:7}"
+          fi
           out=build/app/outputs/flutter-apk
           # Flutter names its output `app-release.apk`; the release carries it
           # under a name that says which app and which version it is.
           cp "$out/app-release.apk" "$out/expense-tracker-$version.apk"
           echo "sha=$(sha256sum "$out/expense-tracker-$version.apk" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "file=expense-tracker-$version.apk" >> "$GITHUB_OUTPUT"
+
+      # A tag publishes the APK with the release. A manual run has no release, so
+      # its APK leaves as an artifact instead — download it and install it.
+      # Pinned for the same reason as the flutter action above: this step runs in
+      # the job that can read the signing key.
+      - name: Upload the APK
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: expense-tracker-${{ steps.apk.outputs.version }}
+          path: build/app/outputs/flutter-apk/${{ steps.apk.outputs.file }}
 
       - name: Publish the release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.apk.outputs.version }}

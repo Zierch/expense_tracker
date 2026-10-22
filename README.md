@@ -177,6 +177,14 @@ The `Release` run waits for approval from the reviewers on the `release`
 environment, then runs the suite, builds, checks the signing certificate, and
 publishes the APK as `expense-tracker-<version>.apk`.
 
+The same workflow can be run by hand, for testing that build without cutting a
+version — **Actions → Release → Run workflow** on the branch you want. It runs
+the same steps against the same signing key, so a green run means the APK builds
+and signs, and it publishes nothing: only a tag reaches the release step. Its APK
+leaves as a workflow artifact named `expense-tracker-<version>-manual-<commit>.apk`
+instead. Like a tag run it waits for the `release` environment's approval,
+because it reads the same key.
+
 Releases up to v1.4.3 carried a second copy under `app-release.apk`, because a
 build older than v1.3.1 looks for that name and nothing else, and its updater is
 already on phones. Publishing the new name alone would have left exactly those
@@ -318,20 +326,25 @@ provider edited without regenerating. CI also installs `libsqlite3-dev`, so the
 database-backed tests run there instead of being reported as skipped.
 
 That install is the one step that talks to a package mirror rather than GitHub,
-and it has hung once: on 22 October 2026 a `Release` run sat on it for 21 minutes
-until it was cancelled, against 5 seconds for the same step an hour earlier. The
-symptom is a run parked on **Install host SQLite** while every later step stays
-queued; nothing in the build is wrong and a re-run has picked a working mirror
-every time. Two things to do about it, in order:
+and it has hung twice: on 22 October 2026 a `Release` run sat on it for 21 minutes
+until it was cancelled, against 5 seconds for the same step an hour earlier, and a
+second run parked there too. The symptom is a run parked on **Install host SQLite**
+while every later step stays queued; nothing in the build is wrong and a re-run has
+picked a working mirror every time.
 
-1. Cancel and re-run. If it hangs twice in a row, cut the release locally
-   instead — see [Publishing a release](#publishing-a-release) — rather than
-   waiting on a mirror.
-2. When it next bites, bound it rather than only working around it: give the step
-   `timeout-minutes: 5` and run `apt-get update` with
-   `-o Acquire::http::Timeout=20 -o Acquire::Retries=3`, plus a
-   `ldconfig -p | grep -q libsqlite3.so && exit 0` short-circuit so a runner that
-   already has the library skips the network entirely.
+It is bounded now, in both workflows: `timeout-minutes: 5`, so a stuck mirror fails
+the step in five minutes instead of parking the run, `-o Acquire::Retries=3
+-o Acquire::http::Timeout=20` on the fetch, and a short-circuit that skips the
+network entirely when `libsqlite3-dev` is already installed. That short-circuit
+asks about the package rather than about a `libsqlite3.so` somewhere in the loader
+cache, because the image ships `libsqlite3.so.0` while the tests open the
+unversioned name that only the dev package provides — a looser check would skip the
+install and turn the database tests into skips, which is the one failure this step
+exists to prevent.
+
+When it still gets in the way, cancel and re-run. If it fails twice in a row, cut
+the release locally instead — see [Publishing a release](#publishing-a-release) —
+rather than waiting on a mirror.
 
 Analysis is deliberately not fatal on the `info` category: those findings are
 printed for whoever wants to act on them, but the run fails only on errors and
