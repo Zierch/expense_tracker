@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:expense_tracker/domain/entities/summary_result.dart';
+import 'package:expense_tracker/presentation/providers/balance_visibility_provider.dart';
 
 class SummaryCard extends ConsumerWidget {
   final AsyncValue<SummaryResult> summaryAsync;
@@ -11,8 +12,16 @@ class SummaryCard extends ConsumerWidget {
   static const _incomeColor = Color(0xFF6EE7B7);
   static const _expenseColor = Color(0xFFFCA5A5);
 
+  /// What stands in for the balance while it is hidden.
+  ///
+  /// Marks rather than an empty space: the row keeps its height and the eye
+  /// stays where it was, so hiding is a change of content, not of layout.
+  static const String _hiddenBalance = 'Rp ••••••';
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final bool balanceVisible = ref.watch(balanceVisibleProvider);
+
     return summaryAsync.when(
       data: (summary) => Container(
         margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -66,7 +75,6 @@ class SummaryCard extends ConsumerWidget {
                 border: Border.all(color: Colors.white.withOpacity(0.08)),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     'Balance',
@@ -76,8 +84,30 @@ class SummaryCard extends ConsumerWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  // The eye sits with the label, not where the figure is: the
+                  // button would otherwise swap places with the number it hides
+                  // and every tap would move the row.
+                  IconButton(
+                    onPressed: () =>
+                        ref.read(balanceVisibleProvider.notifier).toggle(),
+                    icon: Icon(
+                      balanceVisible
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                    iconSize: 18,
+                    color: Colors.white.withOpacity(0.75),
+                    tooltip: balanceVisible ? 'Hide balance' : 'Show balance',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 32, minHeight: 32),
+                  ),
+                  const Spacer(),
                   Text(
-                    _formatCurrency(summary.balance),
+                    balanceVisible
+                        ? _formatCurrency(summary.balance)
+                        : _hiddenBalance,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 22,
