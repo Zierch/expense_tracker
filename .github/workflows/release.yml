@@ -47,7 +47,10 @@ jobs:
 
       # Same reason as in ci.yml: without the host SQLite build the
       # database-backed tests report as skipped instead of failing, and a release
-      # gate that quietly covers less than it claims is worse than none.
+      # gate that quietly covers less than it claims is worse than none. Same
+      # hazard too - this is the one step that talks to a package mirror, and a
+      # hang here looks like a slow build: cancel and re-run, or cut the release
+      # locally (README.md -> "Continuous integration").
       - name: Install host SQLite
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
 

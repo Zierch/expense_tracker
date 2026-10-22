@@ -23,6 +23,13 @@ builds, signs and attaches the APK, using the notes committed at
 `docs/releases/v<version>.md`. Do not move or delete a published tag — phones
 may already have read it — fix forward with the next patch instead.
 
+That workflow's one fragile step is `Install host SQLite`, which talks to a
+package mirror rather than to GitHub: it has hung once for 21 minutes while the
+same step took 5 seconds earlier the same day. A run parked on that step is a
+stuck mirror, not a slow build — cancel it, re-run it, and if it hangs twice
+build the release locally and attach the APK by hand
+(`README.md` → *Continuous integration* and *Publishing a release*).
+
 ## Delete the branch after a pull request merges cleanly
 
 When a pull request merges without conflicts and the head branch holds no work

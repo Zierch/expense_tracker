@@ -35,6 +35,12 @@ jobs:
       # different build from the one the app ships (README.md -> "Tests").
       # Without this they report as skipped rather than failed, so the suite
       # would look green while covering less than it claims.
+      #
+      # This is the only step that talks to a package mirror, and it has hung
+      # there: 21 minutes against 5 seconds for the same step earlier. If a run
+      # parks here while the steps below stay queued, the mirror is stuck, not
+      # the build — cancel and re-run; README.md -> "Continuous integration" has
+      # the timeouts to add when it next bites.
       - name: Install host SQLite
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
 

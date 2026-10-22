@@ -311,6 +311,22 @@ then fails if the working tree changed, which is what catches a table or a
 provider edited without regenerating. CI also installs `libsqlite3-dev`, so the
 database-backed tests run there instead of being reported as skipped.
 
+That install is the one step that talks to a package mirror rather than GitHub,
+and it has hung once: on 22 October 2026 a `Release` run sat on it for 21 minutes
+until it was cancelled, against 5 seconds for the same step an hour earlier. The
+symptom is a run parked on **Install host SQLite** while every later step stays
+queued; nothing in the build is wrong and a re-run has picked a working mirror
+every time. Two things to do about it, in order:
+
+1. Cancel and re-run. If it hangs twice in a row, cut the release locally
+   instead — see [Publishing a release](#publishing-a-release) — rather than
+   waiting on a mirror.
+2. When it next bites, bound it rather than only working around it: give the step
+   `timeout-minutes: 5` and run `apt-get update` with
+   `-o Acquire::http::Timeout=20 -o Acquire::Retries=3`, plus a
+   `ldconfig -p | grep -q libsqlite3.so && exit 0` short-circuit so a runner that
+   already has the library skips the network entirely.
+
 Analysis is deliberately not fatal on the `info` category: those findings are
 printed for whoever wants to act on them, but the run fails only on errors and
 warnings. The generated `*.g.dart` and `*.freezed.dart` files are excluded from
