@@ -6,6 +6,7 @@ import 'package:expense_tracker/presentation/providers/providers.dart';
 import 'package:expense_tracker/presentation/providers/theme_provider.dart';
 import 'package:expense_tracker/presentation/widgets/transaction_tile.dart';
 import 'package:expense_tracker/presentation/widgets/summary_card.dart';
+import 'package:expense_tracker/presentation/widgets/month_selector.dart';
 import 'package:go_router/go_router.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -41,11 +42,6 @@ class _HomePageState extends ConsumerState<HomePage> {
             tooltip: 'Statistics',
           ),
           IconButton(
-            icon: const Icon(Icons.calendar_month),
-            onPressed: _pickMonth,
-            tooltip: 'Select Month',
-          ),
-          IconButton(
             icon: const Icon(Icons.cloud_upload_outlined),
             onPressed: () => context.push('/backup'),
             tooltip: 'Backup to Google Drive',
@@ -59,6 +55,15 @@ class _HomePageState extends ConsumerState<HomePage> {
           // empty or showing an error.
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
+            // The month names itself and is changed from here, not from the app
+            // bar: the icon up there used to change the screen without saying
+            // which month it had changed it to.
+            SliverToBoxAdapter(
+              child: MonthSelector(
+                month: _selectedMonth,
+                onChanged: _selectMonth,
+              ),
+            ),
             SliverToBoxAdapter(child: SummaryCard(summaryAsync: summaryAsync)),
             transactionsAsync.when(
               data: (transactions) {
@@ -187,20 +192,12 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
-  Future<void> _pickMonth() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedMonth,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      helpText: 'SELECT MONTH',
-      fieldHintText: 'Month/Year',
-      fieldLabelText: 'Month',
-      initialDatePickerMode: DatePickerMode.year,
-    );
-    if (picked != null) {
-      setState(() => _selectedMonth = picked);
-    }
+  /// The month on screen, from the dashboard's own picker.
+  ///
+  /// The picker hands back a month anchor, so the day is the 1st and nothing
+  /// here has to decide what a carried-over day would mean.
+  void _selectMonth(DateTime month) {
+    setState(() => _selectedMonth = month);
   }
 
   Future<void> _deleteTransaction(int id) async {

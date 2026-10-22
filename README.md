@@ -54,6 +54,8 @@ Requires Android 7.0 or newer (minSdk 24).
 - Follows your system light or dark theme, or force light/dark from the theme picker on the dashboard
 - Checks GitHub for a newer release on open (and on demand from Backup), downloads and installs it in place
 - Pull the dashboard down to re-run the queries behind the month on screen
+- The month on the dashboard is named above the card and chosen by tapping that
+  name; the picker offers months only, from January 2020 up to the current one
 - Works entirely offline
 
 ## Tech stack
@@ -289,9 +291,11 @@ flutter test
 
 The suite covers the monthly export format, month navigation (including the
 year-boundary arithmetic), the month boundaries themselves — the in-memory predicate
-and the SQL range, run against a real in-memory database — the transaction row widget,
-the dashboard's pull-to-refresh, and the release-config invariants that keep
-signing, backup rules and the OAuth identity from silently regressing.
+and the SQL range, run against a real in-memory database — the dashboard's month
+picker (which months it offers, and that a choice comes back as a month anchor), the
+transaction row widget, the dashboard's pull-to-refresh, the balance's hide/show
+toggle, and the release-config invariants that keep signing, backup rules and the
+OAuth identity from silently regressing.
 
 The database-backed tests need a SQLite library for the *host* to load, which is a
 different build from the one the app ships: Windows uses the `winsqlite3.dll` that
