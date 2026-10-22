@@ -122,6 +122,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                 child: Center(child: Text('Error: $e')),
               ),
             ),
+            // Room for the FAB at the end of the list: scrolled all the way down,
+            // the last row used to sit underneath it. The extended button is 48
+            // tall and floats 16 above the bottom edge, plus air below the row.
+            const SliverToBoxAdapter(child: SizedBox(height: 88)),
           ],
         ),
       ),

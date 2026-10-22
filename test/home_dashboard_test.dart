@@ -211,4 +211,30 @@ void main() {
       );
     },
   );
+
+  sqliteWidgetTest(
+    'the last row clears the button that adds the next one',
+    (AppDatabase db, WidgetTester tester) async {
+      // Longer than the screen: the FAB only covers a row when the list reaches the
+      // bottom, which is the moment the user is looking at what they last typed.
+      for (int i = 1; i <= 15; i++) {
+        await _insert(db, amount: 1000.0 * i, date: today,
+            createdAt: noon.add(Duration(minutes: i)));
+      }
+
+      await _pumpHome(tester, db);
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -2000));
+      await tester.pumpAndSettle();
+
+      final Rect fab = tester.getRect(find.byType(FloatingActionButton));
+      final double lastRowBottom =
+          tester.getRect(find.byType(TransactionTile).last).bottom;
+
+      expect(lastRowBottom, lessThanOrEqualTo(fab.top),
+          reason: 'at the end of the list the last row sat underneath the extended FAB, '
+              'so the newest entry was the one hidden');
+    },
+  );
 }
