@@ -1,7 +1,7 @@
 name: expense_tracker
 description: Offline Android income and expense tracker with optional per-month backup to your own Google Drive.
 publish_to: 'none'
-version: 1.4.2+8
+version: 1.4.3+9
 repository: https://github.com/Zierch/expense_tracker
 issue_tracker: https://github.com/Zierch/expense_tracker/issues
 
@@ -28,6 +28,8 @@ dependencies:
   http: ^1.2.0
   shared_preferences: ^2.2.3
   crypto: ^3.0.3
+  pdf: ^3.11.0
+  printing: ^5.13.0
   # Pinned while flutter/packages#194649 is open: the 2.5.x implementation of this
   # package calls its Kotlin code through JNI, and R8 (on by default in release
   # builds) renames kotlin.coroutines.Continuation, so the bound name no longer

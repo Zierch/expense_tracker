@@ -1,11 +1,16 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 
 import 'package:expense_tracker/data/services/google_config.dart';
 import 'package:expense_tracker/data/services/google_drive_service.dart';
+import 'package:expense_tracker/data/services/pdf_report_builder.dart';
 import 'package:expense_tracker/domain/usecases/export_month_usecase.dart';
+import 'package:expense_tracker/domain/usecases/export_pdf_usecase.dart';
 import 'package:expense_tracker/presentation/providers/backup_providers.dart';
 import 'package:expense_tracker/presentation/providers/update_providers.dart';
 
@@ -96,7 +101,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               children: <Widget>[
                 Row(
                   children: <Widget>[
-                    Icon(Icons.cloud_outlined, color: theme.colorScheme.primary),
+                    Icon(Icons.cloud_outlined,
+                        color: theme.colorScheme.primary),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -139,6 +145,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               'the backup files it created itself — never the rest of your Drive.',
           tone: theme.colorScheme.primary,
         ),
+        const SizedBox(height: 12),
+        const _PdfCard(),
         const SizedBox(height: 12),
         const _UpdateCard(),
         if (_error != null) ...<Widget>[
@@ -261,6 +269,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        const _PdfCard(),
         const SizedBox(height: 12),
         const _UpdateCard(),
         if (_result != null) ...<Widget>[
@@ -577,6 +587,155 @@ class _ButtonSpinner extends StatelessWidget {
       height: 18,
       child: CircularProgressIndicator(strokeWidth: 2),
     );
+  }
+}
+
+/// The PDF report: totals, categories and every transaction of any date range,
+/// drawn locally and handed to Android's share sheet.
+///
+/// No sign-in and no storage permission: the file leaves through whichever app
+/// the user picks, and the app itself keeps nothing.
+class _PdfCard extends ConsumerStatefulWidget {
+  const _PdfCard();
+
+  @override
+  ConsumerState<_PdfCard> createState() => _PdfCardState();
+}
+
+class _PdfCardState extends ConsumerState<_PdfCard> {
+  static final DateFormat _day = DateFormat('d MMM yyyy');
+
+  late DateTimeRange _range = _thisMonth();
+  bool _busy = false;
+  String? _error;
+  String? _hint;
+
+  /// Opens on the month so far: the range most people want to hand over.
+  static DateTimeRange _thisMonth() {
+    final DateTime now = DateTime.now();
+    return DateTimeRange(start: DateTime(now.year, now.month, 1), end: now);
+  }
+
+  String get _rangeLabel =>
+      '${_day.format(_range.start)} – ${_day.format(_range.end)}';
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(Icons.picture_as_pdf_outlined,
+                    color: theme.colorScheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'PDF report',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'A PDF of any date range: totals, a breakdown per category, and '
+              'every transaction. Works offline and needs no Google account — '
+              'you choose where the file goes from the share sheet.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _pickRange,
+              icon: const Icon(Icons.date_range_outlined, size: 18),
+              label: Text(_rangeLabel),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _busy ? null : _export,
+                icon: _busy
+                    ? const _ButtonSpinner()
+                    : const Icon(Icons.ios_share),
+                label: Text(_busy ? 'Preparing…' : 'Export PDF'),
+              ),
+            ),
+            if (_hint != null) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(_hint!, style: theme.textTheme.bodySmall),
+            ],
+            if (_error != null) ...<Widget>[
+              const SizedBox(height: 8),
+              SelectableText(
+                _error!,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.error),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickRange() async {
+    final DateTime today = DateTime.now();
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: today,
+      initialDateRange: _range,
+      helpText: 'PDF report range',
+    );
+
+    if (picked == null || !mounted) return;
+    setState(() {
+      _range = picked;
+      _error = null;
+      _hint = null;
+    });
+  }
+
+  Future<void> _export() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+      _hint = null;
+    });
+
+    try {
+      final PdfReportData report = await ref
+          .read(exportPdfUseCaseProvider)
+          .call(from: _range.start, to: _range.end);
+
+      if (report.transactionCount == 0) {
+        if (mounted) {
+          setState(() => _hint =
+              'There are no transactions between $_rangeLabel, so there is '
+                  'nothing to export yet.');
+        }
+        return;
+      }
+
+      final Uint8List bytes = await buildPdfReport(report);
+      await Printing.sharePdf(bytes: bytes, filename: report.fileName);
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() => _error = 'Could not build the PDF: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
   }
 }
 

@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import 'package:expense_tracker/data/services/google_drive_service.dart';
 import 'package:expense_tracker/domain/usecases/export_month_usecase.dart';
+import 'package:expense_tracker/domain/usecases/export_pdf_usecase.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
 
 /// Plain (non-code-generated) providers so adding this feature does not require
@@ -21,4 +22,10 @@ final googleAccountProvider = StreamProvider<GoogleSignInAccount?>(
 
 final exportMonthUseCaseProvider = Provider<ExportMonthUseCase>(
   (Ref ref) => ExportMonthUseCase(ref.watch(transactionRepositoryProvider)),
+);
+
+/// The PDF report reads the same repository as the Drive backup, but writes
+/// nothing: it is a local file handed to the share sheet.
+final exportPdfUseCaseProvider = Provider<ExportPdfUseCase>(
+  (Ref ref) => ExportPdfUseCase(ref.watch(transactionRepositoryProvider)),
 );
