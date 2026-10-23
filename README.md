@@ -9,6 +9,18 @@ permission the app requests is `drive.file` — it can see the backup files it
 created itself, and nothing else in your Drive. [PRIVACY.md](PRIVACY.md) spells
 this out in full.
 
+## Screenshots
+
+Dark theme, on Android 16. The phone in these pictures is an emulator holding
+invented transactions — `tool/demo_main.dart` seeds them — so no screenshot
+carries anybody's real spending.
+
+| Dashboard | Statistics | Add a transaction |
+| --- | --- | --- |
+| ![Dashboard, dark](assets/screenshots/dashboard-dark.png) | ![Statistics, dark](assets/screenshots/statistics-dark.png) | ![Add a transaction, empty](assets/screenshots/add-transaction-empty-dark.png) |
+| ![End of the dashboard list, dark](assets/screenshots/dashboard-bottom-dark.png) | ![Expense breakdown, dark](assets/screenshots/statistics-breakdown-dark.png) | ![Add a transaction, filled in](assets/screenshots/add-transaction-filled-dark.png) |
+| ![Dashboard, light](assets/screenshots/dashboard-light.png) | ![End of the dashboard list, light](assets/screenshots/dashboard-bottom-light.png) | ![Backup and PDF report](assets/screenshots/backup-dark.png) |
+
 ## Download
 
 Grab the latest APK from the
