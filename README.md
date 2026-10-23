@@ -61,6 +61,9 @@ Requires Android 7.0 or newer (minSdk 24).
   kept as separate views
 - Statistics split into an Expense tab and an Income tab, with a category-by-
   category breakdown and a pie chart for expenses
+- Monthly budget per category: tap a category on the Expense tab to set a
+  ceiling, and its row grows a bar that turns amber near the line and red past
+  it, with the amount left over next to it
 - Amount entry with quick-append buttons for `0` / `00` / `000`
 - Indonesian rupiah (IDR) formatting
 - Optional per-month JSON export to a `Expense Tracker` folder in your own

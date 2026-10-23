@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:expense_tracker/domain/entities/category_budget.dart';
 import 'package:expense_tracker/domain/entities/month_range.dart';
 import 'package:expense_tracker/domain/entities/summary_result.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
@@ -31,6 +32,11 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     final summaryAsync =
         ref.watch(summaryProvider(start: range.start, end: range.end));
     final transactionsAsync = ref.watch(transactionsStreamProvider);
+    // Straight from the local table, so it is there within a frame of the page
+    // opening. A read that fails leaves the bars out rather than replacing the
+    // whole screen with an error: the totals and the rows are still true.
+    final List<CategoryBudget> budgets =
+        ref.watch(budgetsProvider).valueOrNull ?? const <CategoryBudget>[];
 
     return Scaffold(
       appBar: AppBar(
@@ -59,7 +65,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                 _buildTabSelector(),
                 const SizedBox(height: 16),
                 if (_tabIndex == 0)
-                  ..._buildExpenseTab(summary, expenses)
+                  ..._buildExpenseTab(summary, expenses, budgets)
                 else
                   ..._buildIncomeTab(summary, incomes),
               ],
@@ -101,7 +107,11 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     );
   }
 
-  List<Widget> _buildExpenseTab(SummaryResult summary, List<TransactionEntity> expenses) {
+  List<Widget> _buildExpenseTab(
+    SummaryResult summary,
+    List<TransactionEntity> expenses,
+    List<CategoryBudget> budgets,
+  ) {
     return [
       _totalCard('Total Expense (Monthly)', summary.totalExpense, Colors.red, Icons.north_east_rounded),
       const SizedBox(height: 16),
@@ -121,9 +131,168 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
         emptyText: 'No expense this month',
       ),
       const SizedBox(height: 16),
-      if (summary.expenseByCategory.isNotEmpty)
-        _categorySection('Expense by Category', summary.expenseByCategory, summary.totalExpense),
+      if (summary.expenseByCategory.isNotEmpty || budgets.isNotEmpty)
+        _budgetSection(summary, budgets),
     ];
+  }
+
+  /// The spending breakdown, with each row measured against its ceiling.
+  ///
+  /// The rows are the union of what was spent and what has a ceiling: a budget
+  /// set for a category that has no spending this month still shows, at zero
+  /// spent, which is also the only way to reach it again to change or drop it.
+  Widget _budgetSection(SummaryResult summary, List<CategoryBudget> budgets) {
+    final Map<String, double> ceilings = <String, double>{
+      for (final CategoryBudget budget in budgets)
+        if (budget.type == 'expense') budget.name: budget.amount,
+    };
+
+    final List<BudgetProgress> rows = <String>{
+      ...summary.expenseByCategory.keys,
+      ...ceilings.keys,
+    }
+        .map((String name) => BudgetProgress(
+              name: name,
+              spent: summary.expenseByCategory[name] ?? 0,
+              budget: ceilings[name],
+            ))
+        .toList()
+      ..sort((BudgetProgress a, BudgetProgress b) {
+        if (a.spent != b.spent) return b.spent.compareTo(a.spent);
+        return a.name.compareTo(b.name);
+      });
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Expense by Category',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 2),
+            Text(
+              'Tap a category to set its monthly budget',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).textTheme.bodySmall?.color,
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (summary.expenseByCategory.isNotEmpty) ...[
+              CategoryPieChart(data: summary.expenseByCategory),
+              const SizedBox(height: 8),
+            ],
+            ...rows.map((BudgetProgress row) => _budgetRow(row, summary.totalExpense)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _budgetRow(BudgetProgress row, double total) {
+    final Color color = _categoryColor(row.name);
+    final TextTheme text = Theme.of(context).textTheme;
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        radius: 18,
+        backgroundColor: color.withOpacity(0.15),
+        child: Icon(_categoryIcon(row.name), size: 18, color: color),
+      ),
+      title: Text(row.name),
+      subtitle: row.budget == null ? null : _budgetBar(row),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            _fmt(row.spent),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          if (row.budget != null)
+            Text(
+              row.isOver
+                  ? 'over by ${_fmt(row.spent - row.budget!)}'
+                  : 'of ${_fmt(row.budget!)}',
+              style: TextStyle(fontSize: 12, color: text.bodySmall?.color),
+            )
+          else if (total > 0)
+            // Unbudgeted rows keep the share of the month they used to show.
+            Text(
+              '${(row.spent / total * 100).toStringAsFixed(1)}%',
+              style: TextStyle(fontSize: 12, color: text.bodySmall?.color),
+            ),
+        ],
+      ),
+      onTap: () => _editBudget(row.name, row.budget),
+    );
+  }
+
+  Widget _budgetBar(BudgetProgress row) {
+    final double? ratio = row.ratio;
+    // Green while there is room, amber in the last fifth, red once it is past.
+    // A full red bar for a ceiling of zero: everything spent is over it.
+    final Color bar = ratio == null || ratio > 1
+        ? Colors.red
+        : ratio > 0.8
+            ? Colors.orange
+            : Colors.green;
+    final double filled = ratio == null ? 1 : ratio.clamp(0.0, 1.0);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: filled,
+                minHeight: 6,
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(bar),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            row.isOver
+                ? 'over'
+                : '${((ratio ?? 0) * 100).toStringAsFixed(0)}%',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: row.isOver ? Colors.red : Theme.of(context).textTheme.bodySmall?.color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Sets, changes or drops the ceiling on [name].
+  ///
+  /// A zero answers the same way as Remove: a ceiling of zero would put every
+  /// category with any spending instantly over budget, which is not a state
+  /// worth offering.
+  Future<void> _editBudget(String name, double? current) async {
+    final double? result = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => _BudgetDialog(name: name, current: current),
+    );
+
+    if (result == null || !mounted) return;
+    if (result <= 0) {
+      await ref.read(clearBudgetUseCaseProvider).call(name: name, type: 'expense');
+    } else {
+      await ref.read(setBudgetUseCaseProvider).call(
+            name: name,
+            type: 'expense',
+            amount: result,
+          );
+    }
   }
 
   List<Widget> _buildIncomeTab(SummaryResult summary, List<TransactionEntity> incomes) {
@@ -414,4 +583,72 @@ class _Bucket {
   final double total;
 
   _Bucket(this.label, this.total);
+}
+
+/// The dialog that sets, changes or drops one ceiling.
+///
+/// It keeps the controller as state because the field outlives the `await` in
+/// [_StatisticsPageState._editBudget]: the route is still animating out when a
+/// controller created in that method would be disposed, and the widget rebuilds
+/// during the transition — which is a "used after being disposed" crash.
+class _BudgetDialog extends StatefulWidget {
+  const _BudgetDialog({required this.name, required this.current});
+
+  final String name;
+  final double? current;
+
+  @override
+  State<_BudgetDialog> createState() => _BudgetDialogState();
+}
+
+class _BudgetDialogState extends State<_BudgetDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.current?.toStringAsFixed(0) ?? '',
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final String digits = _controller.text.replaceAll(RegExp(r'[^0-9]'), '');
+    // An empty field answers `null`, not zero: zero drops the ceiling, and
+    // clearing the field to retype an amount should not delete one. Remove is
+    // how a ceiling is dropped.
+    Navigator.pop(context, digits.isEmpty ? null : double.tryParse(digits));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Budget for ${widget.name}'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(
+          labelText: 'Monthly ceiling',
+          prefixText: 'Rp ',
+        ),
+        onSubmitted: (_) => _save(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        if (widget.current != null)
+          TextButton(
+            onPressed: () => Navigator.pop(context, 0.0),
+            child: const Text('Remove'),
+          ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }

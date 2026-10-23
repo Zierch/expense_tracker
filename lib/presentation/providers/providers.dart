@@ -2,9 +2,11 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
+import 'package:expense_tracker/domain/entities/category_budget.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/entities/summary_result.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
+import 'package:expense_tracker/domain/usecases/budget_usecases.dart';
 import 'package:expense_tracker/domain/usecases/transaction_usecases.dart';
 
 part 'providers.g.dart';
@@ -63,4 +65,26 @@ Future<SummaryResult> summary(Ref ref, {DateTime? start, DateTime? end}) {
   // every write. The value is deliberately unused — it is the subscription that matters.
   ref.watch(transactionsStreamProvider);
   return ref.watch(getSummaryUseCaseProvider).call(start: start, end: end);
+}
+
+@riverpod
+WatchBudgetsUseCase watchBudgetsUseCase(Ref ref) {
+  return WatchBudgetsUseCase(ref.watch(transactionRepositoryProvider));
+}
+
+@riverpod
+SetBudgetUseCase setBudgetUseCase(Ref ref) {
+  return SetBudgetUseCase(ref.watch(transactionRepositoryProvider));
+}
+
+@riverpod
+ClearBudgetUseCase clearBudgetUseCase(Ref ref) {
+  return ClearBudgetUseCase(ref.watch(transactionRepositoryProvider));
+}
+
+/// The ceilings the user has set, live: a sheet that writes one updates the
+/// bars behind it without a refresh.
+@riverpod
+Stream<List<CategoryBudget>> budgets(Ref ref) {
+  return ref.watch(watchBudgetsUseCaseProvider).call();
 }

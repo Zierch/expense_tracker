@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
+import 'package:expense_tracker/domain/entities/category_budget.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 
@@ -73,6 +74,33 @@ class TransactionRepositoryImpl implements TransactionRepository {
   @override
   Future<Map<String, double>> getIncomeByCategory({DateTime? start, DateTime? end}) {
     return _database.getIncomeByCategory(start: start, end: end);
+  }
+
+  @override
+  Stream<List<CategoryBudget>> watchBudgets() {
+    return _database.watchBudgets().map(
+          (List<Budget> rows) => rows
+              .map((Budget row) => CategoryBudget(
+                    name: row.name,
+                    type: row.type,
+                    amount: row.amount,
+                  ))
+              .toList(),
+        );
+  }
+
+  @override
+  Future<void> setBudget({
+    required String name,
+    required String type,
+    required double amount,
+  }) {
+    return _database.setBudget(name: name, type: type, amount: amount);
+  }
+
+  @override
+  Future<void> clearBudget({required String name, required String type}) {
+    return _database.clearBudget(name: name, type: type);
   }
 
   TransactionEntity _toEntity(TransactionWithNames row) {

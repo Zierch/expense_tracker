@@ -324,5 +324,73 @@ class _SummaryProviderElement
   @override
   DateTime? get end => (origin as SummaryProvider).end;
 }
+
+String _$watchBudgetsUseCaseHash() =>
+    r'a688d88aff0984f37e774c44d830b3d70a43c2bc';
+
+/// See also [watchBudgetsUseCase].
+@ProviderFor(watchBudgetsUseCase)
+final watchBudgetsUseCaseProvider =
+    AutoDisposeProvider<WatchBudgetsUseCase>.internal(
+  watchBudgetsUseCase,
+  name: r'watchBudgetsUseCaseProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$watchBudgetsUseCaseHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef WatchBudgetsUseCaseRef = AutoDisposeProviderRef<WatchBudgetsUseCase>;
+String _$setBudgetUseCaseHash() => r'bdaca0c4c77cc5954a59f5c38d379cb3f3a871d2';
+
+/// See also [setBudgetUseCase].
+@ProviderFor(setBudgetUseCase)
+final setBudgetUseCaseProvider = AutoDisposeProvider<SetBudgetUseCase>.internal(
+  setBudgetUseCase,
+  name: r'setBudgetUseCaseProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$setBudgetUseCaseHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef SetBudgetUseCaseRef = AutoDisposeProviderRef<SetBudgetUseCase>;
+String _$clearBudgetUseCaseHash() =>
+    r'47c17fd94b248f4b14d33017c3cdf7e658b15e25';
+
+/// See also [clearBudgetUseCase].
+@ProviderFor(clearBudgetUseCase)
+final clearBudgetUseCaseProvider =
+    AutoDisposeProvider<ClearBudgetUseCase>.internal(
+  clearBudgetUseCase,
+  name: r'clearBudgetUseCaseProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$clearBudgetUseCaseHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef ClearBudgetUseCaseRef = AutoDisposeProviderRef<ClearBudgetUseCase>;
+String _$budgetsHash() => r'aaf645b4e322d24e5e7dff37d928f7a28dd3d92c';
+
+/// The ceilings the user has set, live: a sheet that writes one updates the
+/// bars behind it without a refresh.
+///
+/// Copied from [budgets].
+@ProviderFor(budgets)
+final budgetsProvider =
+    AutoDisposeStreamProvider<List<CategoryBudget>>.internal(
+  budgets,
+  name: r'budgetsProvider',
+  debugGetCreateSourceHash:
+      const bool.fromEnvironment('dart.vm.product') ? null : _$budgetsHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef BudgetsRef = AutoDisposeStreamProviderRef<List<CategoryBudget>>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member

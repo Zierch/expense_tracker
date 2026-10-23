@@ -13,6 +13,7 @@
 import 'package:drift/native.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'dart:io';
 
 /// What `DynamicLibrary.open` puts in the message when it cannot find a library.
 ///
@@ -67,4 +68,20 @@ void sqliteWidgetTest(
       await db.close();
     }
   });
+}
+
+/// A real SQLite **file**, or `null` after marking the test skipped.
+///
+/// A file rather than `NativeDatabase.memory()` because an upgrade is a close
+/// and a re-open, and an in-memory database does not survive the first close.
+/// The caller owns the file and has to close the database itself.
+AppDatabase? openSqliteFileOrSkip(String path) {
+  try {
+    return AppDatabase.withExecutor(NativeDatabase(File(path)));
+  } on ArgumentError catch (error) {
+    if (!'${error.message}'.contains(_missingLibraryMarker)) rethrow;
+    markTestSkipped('no SQLite for `flutter test` to load on this host '
+        '(the app ships its own; host tests use the system one): $error');
+    return null;
+  }
 }

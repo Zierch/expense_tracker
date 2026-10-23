@@ -30,7 +30,30 @@ class Transactions extends Table {
   DateTimeColumn get createdAt => dateTime().clientDefault(() => DateTime.now())();
 }
 
-@DriftDatabase(tables: [Categories, Subcategories, Transactions])
+/// A monthly spending ceiling, per category.
+///
+/// Keyed by the *name* the breakdown already shows — `subcategoryName ??
+/// categoryName`, the string `getExpenseByCategory` puts on the statistics list
+/// and in the PDF — rather than by id. Two subcategories may share a name, and a
+/// budget held by id would then have to pick one of the rows it measures; held
+/// by name it measures exactly the row the user tapped. There is no rename in
+/// the app, so the name is stable; if renaming ever lands, this table needs the
+/// ids and a migration that fills them.
+class Budgets extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text().withLength(min: 1, max: 50)();
+  TextColumn get type => text().withLength(min: 1, max: 10)(); // 'income' | 'expense'
+  RealColumn get amount => real()();
+
+  /// One ceiling per category: the database refuses a second row for the same
+  /// pair even if a caller forgets to replace the first.
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {name, type},
+      ];
+}
+
+@DriftDatabase(tables: [Categories, Subcategories, Transactions, Budgets])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -44,7 +67,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.withExecutor(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -60,6 +83,11 @@ class AppDatabase extends _$AppDatabase {
           await m.addColumn(transactions, transactions.categoryId);
           await m.addColumn(transactions, transactions.subcategoryId);
           await _seedData();
+        }
+        // v3 only adds a table: no existing row is touched, so an install that
+        // upgrades keeps every transaction it had.
+        if (from < 3) {
+          await m.createTable(budgets);
         }
       },
     );
@@ -200,6 +228,27 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<Subcategory>> getSubcategories(int categoryId) {
     return (select(subcategories)..where((s) => s.categoryId.equals(categoryId))).get();
+  }
+
+  // Budget queries
+
+  Stream<List<Budget>> watchBudgets() => select(budgets).watch();
+
+  /// One ceiling per (type, name): setting a second one replaces the first
+  /// rather than stacking, which is what keeps a category showing a single bar.
+  Future<void> setBudget({
+    required String name,
+    required String type,
+    required double amount,
+  }) async {
+    await clearBudget(name: name, type: type);
+    await into(budgets).insert(
+      BudgetsCompanion.insert(name: name, type: type, amount: amount),
+    );
+  }
+
+  Future<void> clearBudget({required String name, required String type}) {
+    return (delete(budgets)..where((b) => b.name.equals(name) & b.type.equals(type))).go();
   }
 
   /// Newest first, and repeatable.
