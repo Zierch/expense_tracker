@@ -21,6 +21,11 @@ carries anybody's real spending.
 | ![End of the dashboard list, dark](assets/screenshots/dashboard-bottom-dark.png) | ![Expense breakdown, dark](assets/screenshots/statistics-breakdown-dark.png) | ![Add a transaction, filled in](assets/screenshots/add-transaction-filled-dark.png) |
 | ![Dashboard, light](assets/screenshots/dashboard-light.png) | ![End of the dashboard list, light](assets/screenshots/dashboard-bottom-light.png) | ![Backup and PDF report](assets/screenshots/backup-dark.png) |
 
+Recording one transaction — the amount, the quick-append buttons, the
+subcategory, the note, and the dashboard it lands back on:
+
+![Adding a transaction, end to end](assets/screenshots/add-transaction-dark.gif)
+
 ## Download
 
 Grab the latest APK from the
