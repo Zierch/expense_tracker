@@ -17,14 +17,14 @@ carries anybody's real spending.
 
 | Dashboard | Statistics | Add a transaction |
 | --- | --- | --- |
-| ![Dashboard, dark](assets/screenshots/dashboard-dark.png) | ![Statistics, dark](assets/screenshots/statistics-dark.png) | ![Add a transaction, empty](assets/screenshots/add-transaction-empty-dark.png) |
-| ![End of the dashboard list, dark](assets/screenshots/dashboard-bottom-dark.png) | ![Expense breakdown, dark](assets/screenshots/statistics-breakdown-dark.png) | ![Add a transaction, filled in](assets/screenshots/add-transaction-filled-dark.png) |
-| ![Dashboard, light](assets/screenshots/dashboard-light.png) | ![End of the dashboard list, light](assets/screenshots/dashboard-bottom-light.png) | ![Backup and PDF report](assets/screenshots/backup-dark.png) |
+| <img src="assets/screenshots/dashboard-dark.png" width="160" alt="Dashboard, dark"> | <img src="assets/screenshots/statistics-dark.png" width="160" alt="Statistics, dark"> | <img src="assets/screenshots/add-transaction-empty-dark.png" width="160" alt="Add a transaction, empty"> |
+| <img src="assets/screenshots/dashboard-bottom-dark.png" width="160" alt="End of the dashboard list, dark"> | <img src="assets/screenshots/statistics-breakdown-dark.png" width="160" alt="Expense breakdown, dark"> | <img src="assets/screenshots/add-transaction-filled-dark.png" width="160" alt="Add a transaction, filled in"> |
+| <img src="assets/screenshots/dashboard-light.png" width="160" alt="Dashboard, light"> | <img src="assets/screenshots/dashboard-bottom-light.png" width="160" alt="End of the dashboard list, light"> | <img src="assets/screenshots/backup-dark.png" width="160" alt="Backup and PDF report"> |
 
 Recording one transaction — the amount, the quick-append buttons, the
 subcategory, the note, and the dashboard it lands back on:
 
-![Adding a transaction, end to end](assets/screenshots/add-transaction-dark.gif)
+<img src="assets/screenshots/add-transaction-dark.gif" width="200" alt="Adding a transaction, end to end">
 
 ## Download
 
