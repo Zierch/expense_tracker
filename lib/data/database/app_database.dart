@@ -53,7 +53,28 @@ class Budgets extends Table {
       ];
 }
 
-@DriftDatabase(tables: [Categories, Subcategories, Transactions, Budgets])
+/// A transaction that comes back every month, on the same day.
+///
+/// [dayOfMonth] is held between 1 and 28 so that every month has the day,
+/// February included. [lastGeneratedOn] is the day this month's row was written:
+/// null until it happens once, and the reason opening the app twice in a month
+/// cannot add the row twice. A month that went by without the app being opened
+/// is not back-filled — the row is written for the month that is running, or not
+/// at all.
+class RecurringTemplates extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get type => text().withLength(min: 1, max: 10)(); // 'income' | 'expense'
+  RealColumn get amount => real()();
+  IntColumn get categoryId => integer().references(Categories, #id)();
+  IntColumn get subcategoryId => integer().nullable().references(Subcategories, #id)();
+  TextColumn get note => text().nullable()();
+  IntColumn get dayOfMonth => integer()();
+  BoolColumn get active => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get lastGeneratedOn => dateTime().nullable()();
+}
+
+@DriftDatabase(tables: [Categories, Subcategories, Transactions, Budgets, RecurringTemplates])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -67,7 +88,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.withExecutor(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration {
@@ -88,6 +109,10 @@ class AppDatabase extends _$AppDatabase {
         // upgrades keeps every transaction it had.
         if (from < 3) {
           await m.createTable(budgets);
+        }
+        // v4 is the same trade: one new table, nothing existing rewritten.
+        if (from < 4) {
+          await m.createTable(recurringTemplates);
         }
       },
     );
@@ -236,19 +261,88 @@ class AppDatabase extends _$AppDatabase {
 
   /// One ceiling per (type, name): setting a second one replaces the first
   /// rather than stacking, which is what keeps a category showing a single bar.
+  ///
+  /// In one transaction on purpose: a delete that landed without its insert
+  /// would leave the category with no ceiling at all, which is not what the
+  /// user asked for by tapping Save.
   Future<void> setBudget({
     required String name,
     required String type,
     required double amount,
-  }) async {
-    await clearBudget(name: name, type: type);
-    await into(budgets).insert(
-      BudgetsCompanion.insert(name: name, type: type, amount: amount),
-    );
+  }) {
+    return transaction(() async {
+      await clearBudget(name: name, type: type);
+      await into(budgets).insert(
+        BudgetsCompanion.insert(name: name, type: type, amount: amount),
+      );
+    });
   }
 
   Future<void> clearBudget({required String name, required String type}) {
     return (delete(budgets)..where((b) => b.name.equals(name) & b.type.equals(type))).go();
+  }
+
+  // Recurring template queries
+
+  Stream<List<RecurringTemplateWithNames>> watchRecurringTemplatesWithNames() {
+    final query = select(recurringTemplates).join([
+      innerJoin(categories, categories.id.equalsExp(recurringTemplates.categoryId)),
+      leftOuterJoin(subcategories, subcategories.id.equalsExp(recurringTemplates.subcategoryId)),
+    ]);
+    return query.watch().map((List<TypedResult> rows) => rows
+        .map((TypedResult row) => RecurringTemplateWithNames(
+              template: row.readTable(recurringTemplates),
+              categoryName: row.readTable(categories).name,
+              subcategoryName: row.readTableOrNull(subcategories)?.name,
+            ))
+        .toList()
+      ..sort((RecurringTemplateWithNames a, RecurringTemplateWithNames b) =>
+          a.template.dayOfMonth.compareTo(b.template.dayOfMonth)));
+  }
+
+  Future<int> insertRecurringTemplate(RecurringTemplatesCompanion template) =>
+      into(recurringTemplates).insert(template);
+
+  Future<void> setRecurringTemplateActive(int id, bool active) {
+    return (update(recurringTemplates)..where((t) => t.id.equals(id)))
+        .write(RecurringTemplatesCompanion(active: Value(active)));
+  }
+
+  Future<int> deleteRecurringTemplate(int id) {
+    return (delete(recurringTemplates)..where((t) => t.id.equals(id))).go();
+  }
+
+  /// Writes this month's row for every active template whose day has arrived.
+  ///
+  /// Returns how many rows were written. Nothing is written for a month that has
+  /// gone by, and nothing is written twice in the same month — that is what
+  /// `lastGeneratedOn` is for. A row the user deleted stays deleted until the
+  /// next month, because this method only ever looks at that column, never at
+  /// the transactions themselves.
+  Future<int> applyRecurringTemplates(DateTime now) async {
+    final List<RecurringTemplate> templates =
+        await (select(recurringTemplates)..where((t) => t.active.equals(true))).get();
+
+    int written = 0;
+    for (final RecurringTemplate template in templates) {
+      final DateTime? last = template.lastGeneratedOn;
+      if (last != null && last.year == now.year && last.month == now.month) continue;
+      if (now.day < template.dayOfMonth) continue;
+
+      await into(transactions).insert(TransactionsCompanion.insert(
+        type: template.type,
+        amount: template.amount,
+        categoryId: template.categoryId,
+        subcategoryId: Value(template.subcategoryId),
+        note: Value(template.note),
+        date: DateTime(now.year, now.month, template.dayOfMonth),
+        createdAt: Value(now),
+      ));
+      await (update(recurringTemplates)..where((t) => t.id.equals(template.id)))
+          .write(RecurringTemplatesCompanion(lastGeneratedOn: Value(now)));
+      written++;
+    }
+    return written;
   }
 
   /// Newest first, and repeatable.
@@ -324,6 +418,18 @@ class TransactionWithNames {
 
   TransactionWithNames({
     required this.transaction,
+    required this.categoryName,
+    this.subcategoryName,
+  });
+}
+
+class RecurringTemplateWithNames {
+  final RecurringTemplate template;
+  final String categoryName;
+  final String? subcategoryName;
+
+  RecurringTemplateWithNames({
+    required this.template,
     required this.categoryName,
     this.subcategoryName,
   });

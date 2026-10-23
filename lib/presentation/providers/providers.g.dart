@@ -392,5 +392,115 @@ final budgetsProvider =
 );
 
 typedef BudgetsRef = AutoDisposeStreamProviderRef<List<CategoryBudget>>;
+String _$watchRecurringTemplatesUseCaseHash() =>
+    r'd9d8def121c24382b01cf6f9e0d67723eecb7341';
+
+/// See also [watchRecurringTemplatesUseCase].
+@ProviderFor(watchRecurringTemplatesUseCase)
+final watchRecurringTemplatesUseCaseProvider =
+    AutoDisposeProvider<WatchRecurringTemplatesUseCase>.internal(
+  watchRecurringTemplatesUseCase,
+  name: r'watchRecurringTemplatesUseCaseProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$watchRecurringTemplatesUseCaseHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef WatchRecurringTemplatesUseCaseRef
+    = AutoDisposeProviderRef<WatchRecurringTemplatesUseCase>;
+String _$addRecurringTemplateUseCaseHash() =>
+    r'0466da9ff23849ecde728d27f7d45f833f5ea8ff';
+
+/// See also [addRecurringTemplateUseCase].
+@ProviderFor(addRecurringTemplateUseCase)
+final addRecurringTemplateUseCaseProvider =
+    AutoDisposeProvider<AddRecurringTemplateUseCase>.internal(
+  addRecurringTemplateUseCase,
+  name: r'addRecurringTemplateUseCaseProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$addRecurringTemplateUseCaseHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef AddRecurringTemplateUseCaseRef
+    = AutoDisposeProviderRef<AddRecurringTemplateUseCase>;
+String _$setRecurringTemplateActiveUseCaseHash() =>
+    r'2478cb1b4615c80364a058e7c6ecce0c72ac4b2d';
+
+/// See also [setRecurringTemplateActiveUseCase].
+@ProviderFor(setRecurringTemplateActiveUseCase)
+final setRecurringTemplateActiveUseCaseProvider =
+    AutoDisposeProvider<SetRecurringTemplateActiveUseCase>.internal(
+  setRecurringTemplateActiveUseCase,
+  name: r'setRecurringTemplateActiveUseCaseProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$setRecurringTemplateActiveUseCaseHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef SetRecurringTemplateActiveUseCaseRef
+    = AutoDisposeProviderRef<SetRecurringTemplateActiveUseCase>;
+String _$deleteRecurringTemplateUseCaseHash() =>
+    r'1172b24b3f22559df227f23330595a1d4591c747';
+
+/// See also [deleteRecurringTemplateUseCase].
+@ProviderFor(deleteRecurringTemplateUseCase)
+final deleteRecurringTemplateUseCaseProvider =
+    AutoDisposeProvider<DeleteRecurringTemplateUseCase>.internal(
+  deleteRecurringTemplateUseCase,
+  name: r'deleteRecurringTemplateUseCaseProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$deleteRecurringTemplateUseCaseHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef DeleteRecurringTemplateUseCaseRef
+    = AutoDisposeProviderRef<DeleteRecurringTemplateUseCase>;
+String _$applyRecurringTemplatesUseCaseHash() =>
+    r'384692ecd5e593474eeb684c41a57f73563dc2eb';
+
+/// See also [applyRecurringTemplatesUseCase].
+@ProviderFor(applyRecurringTemplatesUseCase)
+final applyRecurringTemplatesUseCaseProvider =
+    AutoDisposeProvider<ApplyRecurringTemplatesUseCase>.internal(
+  applyRecurringTemplatesUseCase,
+  name: r'applyRecurringTemplatesUseCaseProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$applyRecurringTemplatesUseCaseHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef ApplyRecurringTemplatesUseCaseRef
+    = AutoDisposeProviderRef<ApplyRecurringTemplatesUseCase>;
+String _$recurringTemplatesHash() =>
+    r'83abdbf2f91776e5ded486c9873865b87f78daef';
+
+/// The templates, live, so switching one off leaves the list telling the truth.
+///
+/// Copied from [recurringTemplates].
+@ProviderFor(recurringTemplates)
+final recurringTemplatesProvider =
+    AutoDisposeStreamProvider<List<RecurringTemplateEntity>>.internal(
+  recurringTemplates,
+  name: r'recurringTemplatesProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$recurringTemplatesHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef RecurringTemplatesRef
+    = AutoDisposeStreamProviderRef<List<RecurringTemplateEntity>>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member

@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
 import 'package:expense_tracker/domain/entities/category_budget.dart';
+import 'package:expense_tracker/domain/entities/recurring_template.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/entities/summary_result.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:expense_tracker/domain/usecases/budget_usecases.dart';
+import 'package:expense_tracker/domain/usecases/recurring_usecases.dart';
 import 'package:expense_tracker/domain/usecases/transaction_usecases.dart';
 
 part 'providers.g.dart';
@@ -87,4 +89,35 @@ ClearBudgetUseCase clearBudgetUseCase(Ref ref) {
 @riverpod
 Stream<List<CategoryBudget>> budgets(Ref ref) {
   return ref.watch(watchBudgetsUseCaseProvider).call();
+}
+
+@riverpod
+WatchRecurringTemplatesUseCase watchRecurringTemplatesUseCase(Ref ref) {
+  return WatchRecurringTemplatesUseCase(ref.watch(transactionRepositoryProvider));
+}
+
+@riverpod
+AddRecurringTemplateUseCase addRecurringTemplateUseCase(Ref ref) {
+  return AddRecurringTemplateUseCase(ref.watch(transactionRepositoryProvider));
+}
+
+@riverpod
+SetRecurringTemplateActiveUseCase setRecurringTemplateActiveUseCase(Ref ref) {
+  return SetRecurringTemplateActiveUseCase(ref.watch(transactionRepositoryProvider));
+}
+
+@riverpod
+DeleteRecurringTemplateUseCase deleteRecurringTemplateUseCase(Ref ref) {
+  return DeleteRecurringTemplateUseCase(ref.watch(transactionRepositoryProvider));
+}
+
+@riverpod
+ApplyRecurringTemplatesUseCase applyRecurringTemplatesUseCase(Ref ref) {
+  return ApplyRecurringTemplatesUseCase(ref.watch(transactionRepositoryProvider));
+}
+
+/// The templates, live, so switching one off leaves the list telling the truth.
+@riverpod
+Stream<List<RecurringTemplateEntity>> recurringTemplates(Ref ref) {
+  return ref.watch(watchRecurringTemplatesUseCaseProvider).call();
 }

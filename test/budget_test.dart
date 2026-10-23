@@ -157,20 +157,22 @@ void main() {
     expect(afterWrite.single.amount, 1000000);
   });
 
-  test('a v2 install keeps its transactions and gains the budgets table', () async {
+  test('a v2 install keeps its transactions and gains the new tables', () async {
     final Directory dir = Directory.systemTemp.createTempSync('expense_tracker_budget');
     final String path = p.join(dir.path, 'app.sqlite');
 
-    // A database that looks like the one a user who installed before this
-    // feature has: everything except the budgets table, and a recorded version
-    // of 2. Drift only runs `onUpgrade` when that number is behind the schema,
-    // so this is what an upgrade actually looks at.
+    // A database that looks like the one a user who installed before budgets
+    // has: today's tables minus the ones the upgrades add, and a recorded
+    // version of 2. Drift only runs `onUpgrade` when that number is behind the
+    // schema, so this is what an upgrade actually looks at — and the tables the
+    // upgrades are meant to create have to be missing for that to mean anything.
     final AppDatabase? before = openSqliteFileOrSkip(path);
     if (before == null) return;
 
     final DateTime date = DateTime(2026, 3, 4);
     final int rowId = await _insertFood(before, amount: 250000, date: date);
     await before.customStatement('DROP TABLE budgets');
+    await before.customStatement('DROP TABLE recurring_templates');
     await before.customStatement('PRAGMA user_version = 2');
     await before.close();
 
@@ -181,9 +183,20 @@ void main() {
       expect(rows.map((Transaction t) => t.id), <int>[rowId]);
       expect(rows.single.amount, 250000);
 
-      // And the table the upgrade was supposed to add is usable.
+      // And the tables the upgrades were supposed to add are usable.
       await after.setBudget(name: 'Food', type: 'expense', amount: 400000);
       expect((await _storedBudgets(after)).single.amount, 400000);
+
+      final int templateId = await after.insertRecurringTemplate(
+        RecurringTemplatesCompanion.insert(
+          type: 'expense',
+          amount: 75000,
+          categoryId: rows.single.categoryId,
+          dayOfMonth: 5,
+          createdAt: date,
+        ),
+      );
+      expect(templateId, greaterThan(0));
     } finally {
       await after.close();
       dir.deleteSync(recursive: true);

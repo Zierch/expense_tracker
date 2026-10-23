@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/domain/entities/category_budget.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
+import 'package:expense_tracker/domain/entities/recurring_template.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 
 class TransactionRepositoryImpl implements TransactionRepository {
@@ -101,6 +102,56 @@ class TransactionRepositoryImpl implements TransactionRepository {
   @override
   Future<void> clearBudget({required String name, required String type}) {
     return _database.clearBudget(name: name, type: type);
+  }
+
+  @override
+  Stream<List<RecurringTemplateEntity>> watchRecurringTemplates() {
+    return _database.watchRecurringTemplatesWithNames().map(
+          (List<RecurringTemplateWithNames> rows) => rows
+              .map((RecurringTemplateWithNames row) => RecurringTemplateEntity(
+                    id: row.template.id,
+                    type: row.template.type,
+                    amount: row.template.amount,
+                    categoryId: row.template.categoryId,
+                    subcategoryId: row.template.subcategoryId,
+                    note: row.template.note,
+                    dayOfMonth: row.template.dayOfMonth,
+                    active: row.template.active,
+                    categoryName: row.categoryName,
+                    subcategoryName: row.subcategoryName,
+                    lastGeneratedOn: row.template.lastGeneratedOn,
+                  ))
+              .toList(),
+        );
+  }
+
+  @override
+  Future<int> addRecurringTemplate(RecurringTemplateEntity template) {
+    return _database.insertRecurringTemplate(RecurringTemplatesCompanion.insert(
+      type: template.type,
+      amount: template.amount,
+      categoryId: template.categoryId,
+      subcategoryId: Value(template.subcategoryId),
+      note: Value(template.note),
+      dayOfMonth: template.dayOfMonth,
+      createdAt: DateTime.now(),
+      lastGeneratedOn: Value(template.lastGeneratedOn),
+    ));
+  }
+
+  @override
+  Future<void> setRecurringTemplateActive(int id, bool active) {
+    return _database.setRecurringTemplateActive(id, active);
+  }
+
+  @override
+  Future<int> deleteRecurringTemplate(int id) {
+    return _database.deleteRecurringTemplate(id);
+  }
+
+  @override
+  Future<int> applyRecurringTemplates(DateTime now) {
+    return _database.applyRecurringTemplates(now);
   }
 
   TransactionEntity _toEntity(TransactionWithNames row) {

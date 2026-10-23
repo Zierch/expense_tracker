@@ -20,6 +20,16 @@ class _HomePageState extends ConsumerState<HomePage> {
   DateTime _selectedMonth = DateTime.now();
 
   @override
+  void initState() {
+    super.initState();
+    // Recurring templates write the running month's rows here, once per launch.
+    // Nothing else in the app writes a transaction the user did not type, so
+    // this is the only place that has to remember, and it is fire-and-forget:
+    // the list and the totals both follow the write through their streams.
+    Future<void>.microtask(() => ref.read(applyRecurringTemplatesUseCaseProvider).call());
+  }
+
+  @override
   Widget build(BuildContext context) {
     final MonthRange range = MonthRange.of(_selectedMonth);
 
@@ -40,6 +50,11 @@ class _HomePageState extends ConsumerState<HomePage> {
             icon: const Icon(Icons.analytics_outlined),
             onPressed: () => context.push('/statistics'),
             tooltip: 'Statistics',
+          ),
+          IconButton(
+            icon: const Icon(Icons.repeat_rounded),
+            onPressed: () => context.push('/recurring'),
+            tooltip: 'Recurring transactions',
           ),
           IconButton(
             icon: const Icon(Icons.cloud_upload_outlined),
