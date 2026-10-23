@@ -13,8 +13,6 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
-import 'package:expense_tracker/domain/entities/category_budget.dart';
-import 'package:expense_tracker/domain/entities/recurring_template.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:expense_tracker/presentation/pages/home_page.dart';
@@ -80,35 +78,6 @@ class _CountingRepository implements TransactionRepository {
   @override
   Future<Map<String, double>> getIncomeByCategory({DateTime? start, DateTime? end}) =>
       _inner.getIncomeByCategory(start: start, end: end);
-
-  @override
-  Stream<List<CategoryBudget>> watchBudgets() => _inner.watchBudgets();
-
-  @override
-  Future<void> setBudget({required String name, required String type, required double amount}) =>
-      _inner.setBudget(name: name, type: type, amount: amount);
-
-  @override
-  Future<void> clearBudget({required String name, required String type}) =>
-      _inner.clearBudget(name: name, type: type);
-
-  @override
-  Stream<List<RecurringTemplateEntity>> watchRecurringTemplates() =>
-      _inner.watchRecurringTemplates();
-
-  @override
-  Future<int> addRecurringTemplate(RecurringTemplateEntity template) =>
-      _inner.addRecurringTemplate(template);
-
-  @override
-  Future<void> setRecurringTemplateActive(int id, bool active) =>
-      _inner.setRecurringTemplateActive(id, active);
-
-  @override
-  Future<int> deleteRecurringTemplate(int id) => _inner.deleteRecurringTemplate(id);
-
-  @override
-  Future<int> applyRecurringTemplates(DateTime now) => _inner.applyRecurringTemplates(now);
 }
 
 /// Pumps the dashboard with [repository] behind it.

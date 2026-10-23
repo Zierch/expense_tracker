@@ -30,51 +30,7 @@ class Transactions extends Table {
   DateTimeColumn get createdAt => dateTime().clientDefault(() => DateTime.now())();
 }
 
-/// A monthly spending ceiling, per category.
-///
-/// Keyed by the *name* the breakdown already shows — `subcategoryName ??
-/// categoryName`, the string `getExpenseByCategory` puts on the statistics list
-/// and in the PDF — rather than by id. Two subcategories may share a name, and a
-/// budget held by id would then have to pick one of the rows it measures; held
-/// by name it measures exactly the row the user tapped. There is no rename in
-/// the app, so the name is stable; if renaming ever lands, this table needs the
-/// ids and a migration that fills them.
-class Budgets extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get name => text().withLength(min: 1, max: 50)();
-  TextColumn get type => text().withLength(min: 1, max: 10)(); // 'income' | 'expense'
-  RealColumn get amount => real()();
-
-  /// One ceiling per category: the database refuses a second row for the same
-  /// pair even if a caller forgets to replace the first.
-  @override
-  List<Set<Column>> get uniqueKeys => [
-        {name, type},
-      ];
-}
-
-/// A transaction that comes back every month, on the same day.
-///
-/// [dayOfMonth] is held between 1 and 28 so that every month has the day,
-/// February included. [lastGeneratedOn] is the day this month's row was written:
-/// null until it happens once, and the reason opening the app twice in a month
-/// cannot add the row twice. A month that went by without the app being opened
-/// is not back-filled — the row is written for the month that is running, or not
-/// at all.
-class RecurringTemplates extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get type => text().withLength(min: 1, max: 10)(); // 'income' | 'expense'
-  RealColumn get amount => real()();
-  IntColumn get categoryId => integer().references(Categories, #id)();
-  IntColumn get subcategoryId => integer().nullable().references(Subcategories, #id)();
-  TextColumn get note => text().nullable()();
-  IntColumn get dayOfMonth => integer()();
-  BoolColumn get active => boolean().withDefault(const Constant(true))();
-  DateTimeColumn get createdAt => dateTime()();
-  DateTimeColumn get lastGeneratedOn => dateTime().nullable()();
-}
-
-@DriftDatabase(tables: [Categories, Subcategories, Transactions, Budgets, RecurringTemplates])
+@DriftDatabase(tables: [Categories, Subcategories, Transactions])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -88,7 +44,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.withExecutor(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration {
@@ -105,14 +61,19 @@ class AppDatabase extends _$AppDatabase {
           await m.addColumn(transactions, transactions.subcategoryId);
           await _seedData();
         }
-        // v3 only adds a table: no existing row is touched, so an install that
-        // upgrades keeps every transaction it had.
-        if (from < 3) {
-          await m.createTable(budgets);
-        }
-        // v4 is the same trade: one new table, nothing existing rewritten.
-        if (from < 4) {
-          await m.createTable(recurringTemplates);
+        // v3 and v4 added the budgets and recurring-templates tables; both
+        // features were withdrawn and the tables go with them. Dropped by name
+        // because the table classes are gone, and `IF EXISTS` because an install
+        // can arrive here from 2 or 3, where those tables were never made.
+        //
+        // Going up, never down: a phone that opened v1.7.0 recorded version 4,
+        // and a schema that stepped backwards would leave drift with no upgrade
+        // path at all. Every transaction survives this — only the ceilings and
+        // the repeat rules are dropped, and rows those rules already wrote are
+        // ordinary transactions.
+        if (from < 5) {
+          await customStatement('DROP TABLE IF EXISTS budgets');
+          await customStatement('DROP TABLE IF EXISTS recurring_templates');
         }
       },
     );
@@ -255,96 +216,6 @@ class AppDatabase extends _$AppDatabase {
     return (select(subcategories)..where((s) => s.categoryId.equals(categoryId))).get();
   }
 
-  // Budget queries
-
-  Stream<List<Budget>> watchBudgets() => select(budgets).watch();
-
-  /// One ceiling per (type, name): setting a second one replaces the first
-  /// rather than stacking, which is what keeps a category showing a single bar.
-  ///
-  /// In one transaction on purpose: a delete that landed without its insert
-  /// would leave the category with no ceiling at all, which is not what the
-  /// user asked for by tapping Save.
-  Future<void> setBudget({
-    required String name,
-    required String type,
-    required double amount,
-  }) {
-    return transaction(() async {
-      await clearBudget(name: name, type: type);
-      await into(budgets).insert(
-        BudgetsCompanion.insert(name: name, type: type, amount: amount),
-      );
-    });
-  }
-
-  Future<void> clearBudget({required String name, required String type}) {
-    return (delete(budgets)..where((b) => b.name.equals(name) & b.type.equals(type))).go();
-  }
-
-  // Recurring template queries
-
-  Stream<List<RecurringTemplateWithNames>> watchRecurringTemplatesWithNames() {
-    final query = select(recurringTemplates).join([
-      innerJoin(categories, categories.id.equalsExp(recurringTemplates.categoryId)),
-      leftOuterJoin(subcategories, subcategories.id.equalsExp(recurringTemplates.subcategoryId)),
-    ]);
-    return query.watch().map((List<TypedResult> rows) => rows
-        .map((TypedResult row) => RecurringTemplateWithNames(
-              template: row.readTable(recurringTemplates),
-              categoryName: row.readTable(categories).name,
-              subcategoryName: row.readTableOrNull(subcategories)?.name,
-            ))
-        .toList()
-      ..sort((RecurringTemplateWithNames a, RecurringTemplateWithNames b) =>
-          a.template.dayOfMonth.compareTo(b.template.dayOfMonth)));
-  }
-
-  Future<int> insertRecurringTemplate(RecurringTemplatesCompanion template) =>
-      into(recurringTemplates).insert(template);
-
-  Future<void> setRecurringTemplateActive(int id, bool active) {
-    return (update(recurringTemplates)..where((t) => t.id.equals(id)))
-        .write(RecurringTemplatesCompanion(active: Value(active)));
-  }
-
-  Future<int> deleteRecurringTemplate(int id) {
-    return (delete(recurringTemplates)..where((t) => t.id.equals(id))).go();
-  }
-
-  /// Writes this month's row for every active template whose day has arrived.
-  ///
-  /// Returns how many rows were written. Nothing is written for a month that has
-  /// gone by, and nothing is written twice in the same month — that is what
-  /// `lastGeneratedOn` is for. A row the user deleted stays deleted until the
-  /// next month, because this method only ever looks at that column, never at
-  /// the transactions themselves.
-  Future<int> applyRecurringTemplates(DateTime now) async {
-    final List<RecurringTemplate> templates =
-        await (select(recurringTemplates)..where((t) => t.active.equals(true))).get();
-
-    int written = 0;
-    for (final RecurringTemplate template in templates) {
-      final DateTime? last = template.lastGeneratedOn;
-      if (last != null && last.year == now.year && last.month == now.month) continue;
-      if (now.day < template.dayOfMonth) continue;
-
-      await into(transactions).insert(TransactionsCompanion.insert(
-        type: template.type,
-        amount: template.amount,
-        categoryId: template.categoryId,
-        subcategoryId: Value(template.subcategoryId),
-        note: Value(template.note),
-        date: DateTime(now.year, now.month, template.dayOfMonth),
-        createdAt: Value(now),
-      ));
-      await (update(recurringTemplates)..where((t) => t.id.equals(template.id)))
-          .write(RecurringTemplatesCompanion(lastGeneratedOn: Value(now)));
-      written++;
-    }
-    return written;
-  }
-
   /// Newest first, and repeatable.
   ///
   /// `date` is a calendar day rather than an instant (`add_transaction_page` stores it
@@ -418,18 +289,6 @@ class TransactionWithNames {
 
   TransactionWithNames({
     required this.transaction,
-    required this.categoryName,
-    this.subcategoryName,
-  });
-}
-
-class RecurringTemplateWithNames {
-  final RecurringTemplate template;
-  final String categoryName;
-  final String? subcategoryName;
-
-  RecurringTemplateWithNames({
-    required this.template,
     required this.categoryName,
     this.subcategoryName,
   });

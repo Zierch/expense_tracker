@@ -7,8 +7,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:expense_tracker/data/services/pdf_report_builder.dart';
-import 'package:expense_tracker/domain/entities/category_budget.dart';
-import 'package:expense_tracker/domain/entities/recurring_template.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:expense_tracker/domain/usecases/export_pdf_usecase.dart';
@@ -222,36 +220,6 @@ class _FakeRepository implements TransactionRepository {
     DateTime? end,
   }) async =>
       _byCategory(_inRange(start, end), 'income');
-
-  // No ceilings: the PDF is drawn from transactions, and no test here sets or
-  // reads one.
-  @override
-  Stream<List<CategoryBudget>> watchBudgets() =>
-      Stream<List<CategoryBudget>>.value(const <CategoryBudget>[]);
-
-  @override
-  Future<void> setBudget({required String name, required String type, required double amount}) async {}
-
-  @override
-  Future<void> clearBudget({required String name, required String type}) async {}
-  // No templates: none of these tests launch the dashboard, which is what
-  // writes a row, and none of them read the list.
-  @override
-  Stream<List<RecurringTemplateEntity>> watchRecurringTemplates() =>
-      Stream<List<RecurringTemplateEntity>>.value(const <RecurringTemplateEntity>[]);
-
-  @override
-  Future<int> addRecurringTemplate(RecurringTemplateEntity template) async => 0;
-
-  @override
-  Future<void> setRecurringTemplateActive(int id, bool active) async {}
-
-  @override
-  Future<int> deleteRecurringTemplate(int id) async => 0;
-
-  @override
-  Future<int> applyRecurringTemplates(DateTime now) async => 0;
-
 
   @override
   Future<Map<String, double>> getExpenseByCategory({

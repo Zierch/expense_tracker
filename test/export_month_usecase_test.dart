@@ -1,5 +1,3 @@
-import 'package:expense_tracker/domain/entities/category_budget.dart';
-import 'package:expense_tracker/domain/entities/recurring_template.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:expense_tracker/domain/usecases/export_month_usecase.dart';
@@ -60,36 +58,6 @@ class _FakeTransactionRepository implements TransactionRepository {
     DateTime? end,
   }) async =>
       _breakdownFor(_inRange(start, end), 'income');
-
-  // No ceilings: nothing in these tests reads or writes one, so the fake
-  // reports that there are none rather than pretending to store them.
-  @override
-  Stream<List<CategoryBudget>> watchBudgets() =>
-      Stream<List<CategoryBudget>>.value(const <CategoryBudget>[]);
-
-  @override
-  Future<void> setBudget({required String name, required String type, required double amount}) async {}
-
-  @override
-  Future<void> clearBudget({required String name, required String type}) async {}
-  // No templates: none of these tests launch the dashboard, which is what
-  // writes a row, and none of them read the list.
-  @override
-  Stream<List<RecurringTemplateEntity>> watchRecurringTemplates() =>
-      Stream<List<RecurringTemplateEntity>>.value(const <RecurringTemplateEntity>[]);
-
-  @override
-  Future<int> addRecurringTemplate(RecurringTemplateEntity template) async => 0;
-
-  @override
-  Future<void> setRecurringTemplateActive(int id, bool active) async {}
-
-  @override
-  Future<int> deleteRecurringTemplate(int id) async => 0;
-
-  @override
-  Future<int> applyRecurringTemplates(DateTime now) async => 0;
-
 
   @override
   Future<Map<String, double>> getExpenseByCategory({

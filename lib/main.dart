@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:expense_tracker/presentation/pages/home_page.dart';
 import 'package:expense_tracker/presentation/pages/add_transaction_page.dart';
-import 'package:expense_tracker/presentation/pages/recurring_page.dart';
 import 'package:expense_tracker/presentation/pages/statistics_page.dart';
 import 'package:expense_tracker/presentation/pages/backup_page.dart';
 import 'package:expense_tracker/presentation/providers/theme_provider.dart';
@@ -76,10 +75,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/statistics',
         builder: (context, state) => const StatisticsPage(),
-      ),
-      GoRoute(
-        path: '/recurring',
-        builder: (context, state) => const RecurringPage(),
       ),
       GoRoute(
         path: '/backup',

@@ -2,13 +2,9 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
-import 'package:expense_tracker/domain/entities/category_budget.dart';
-import 'package:expense_tracker/domain/entities/recurring_template.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/entities/summary_result.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
-import 'package:expense_tracker/domain/usecases/budget_usecases.dart';
-import 'package:expense_tracker/domain/usecases/recurring_usecases.dart';
 import 'package:expense_tracker/domain/usecases/transaction_usecases.dart';
 
 part 'providers.g.dart';
@@ -67,57 +63,4 @@ Future<SummaryResult> summary(Ref ref, {DateTime? start, DateTime? end}) {
   // every write. The value is deliberately unused — it is the subscription that matters.
   ref.watch(transactionsStreamProvider);
   return ref.watch(getSummaryUseCaseProvider).call(start: start, end: end);
-}
-
-@riverpod
-WatchBudgetsUseCase watchBudgetsUseCase(Ref ref) {
-  return WatchBudgetsUseCase(ref.watch(transactionRepositoryProvider));
-}
-
-@riverpod
-SetBudgetUseCase setBudgetUseCase(Ref ref) {
-  return SetBudgetUseCase(ref.watch(transactionRepositoryProvider));
-}
-
-@riverpod
-ClearBudgetUseCase clearBudgetUseCase(Ref ref) {
-  return ClearBudgetUseCase(ref.watch(transactionRepositoryProvider));
-}
-
-/// The ceilings the user has set, live: a sheet that writes one updates the
-/// bars behind it without a refresh.
-@riverpod
-Stream<List<CategoryBudget>> budgets(Ref ref) {
-  return ref.watch(watchBudgetsUseCaseProvider).call();
-}
-
-@riverpod
-WatchRecurringTemplatesUseCase watchRecurringTemplatesUseCase(Ref ref) {
-  return WatchRecurringTemplatesUseCase(ref.watch(transactionRepositoryProvider));
-}
-
-@riverpod
-AddRecurringTemplateUseCase addRecurringTemplateUseCase(Ref ref) {
-  return AddRecurringTemplateUseCase(ref.watch(transactionRepositoryProvider));
-}
-
-@riverpod
-SetRecurringTemplateActiveUseCase setRecurringTemplateActiveUseCase(Ref ref) {
-  return SetRecurringTemplateActiveUseCase(ref.watch(transactionRepositoryProvider));
-}
-
-@riverpod
-DeleteRecurringTemplateUseCase deleteRecurringTemplateUseCase(Ref ref) {
-  return DeleteRecurringTemplateUseCase(ref.watch(transactionRepositoryProvider));
-}
-
-@riverpod
-ApplyRecurringTemplatesUseCase applyRecurringTemplatesUseCase(Ref ref) {
-  return ApplyRecurringTemplatesUseCase(ref.watch(transactionRepositoryProvider));
-}
-
-/// The templates, live, so switching one off leaves the list telling the truth.
-@riverpod
-Stream<List<RecurringTemplateEntity>> recurringTemplates(Ref ref) {
-  return ref.watch(watchRecurringTemplatesUseCaseProvider).call();
 }

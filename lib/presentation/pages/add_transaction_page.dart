@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
-import 'package:expense_tracker/domain/entities/recurring_template.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
 import 'package:expense_tracker/presentation/widgets/idr_amount_input.dart';
@@ -27,13 +26,6 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   final _noteController = TextEditingController();
   DateTime _date = _dateOnly(DateTime.now());
   bool _isLoading = false;
-
-  /// Whether this row is also a template for the months after it.
-  ///
-  /// Only the add path offers it: an edit changes one row that already exists,
-  /// and letting it rewrite the template would make the two disagree about which
-  /// of them is the source of truth.
-  bool _repeatMonthly = false;
 
   /// The creation time of the row being edited, kept so an edit does not restamp it.
   ///
@@ -147,10 +139,6 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
             _buildDatePicker(),
             const SizedBox(height: 16),
             _buildNoteField(),
-            if (widget.transactionId == null) ...[
-              const SizedBox(height: 8),
-              _buildRepeatSwitch(),
-            ],
             const SizedBox(height: 24),
             _buildSaveButton(),
           ],
@@ -337,21 +325,6 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
     );
   }
 
-  Widget _buildRepeatSwitch() {
-    return SwitchListTile(
-      contentPadding: EdgeInsets.zero,
-      value: _repeatMonthly,
-      onChanged: (bool value) => setState(() => _repeatMonthly = value),
-      secondary: const Icon(Icons.repeat_rounded),
-      title: const Text('Repeat monthly'),
-      subtitle: Text(
-        _repeatMonthly
-            ? 'Added again on day ${RecurringTemplateEntity.clampDay(_date.day)} of every month'
-            : 'Add this again on the same day each month',
-      ),
-    );
-  }
-
   Widget _buildSaveButton() {
     // An edit cannot be saved before its row arrives: the values on screen would be the
     // form's defaults rather than the transaction's. Disabled, rather than accepting a tap
@@ -397,24 +370,6 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
 
       if (widget.transactionId == null) {
         await ref.read(addTransactionUseCaseProvider).call(transaction);
-        if (_repeatMonthly) {
-          // The row just written is this month's occurrence, so the template
-          // starts out already covered for the month it is dated in — otherwise
-          // the next launch would add the same transaction a second time.
-          await ref.read(addRecurringTemplateUseCaseProvider).call(
-                RecurringTemplateEntity(
-                  id: 0,
-                  type: transaction.type,
-                  amount: transaction.amount,
-                  categoryId: transaction.categoryId,
-                  subcategoryId: transaction.subcategoryId,
-                  note: transaction.note,
-                  dayOfMonth: RecurringTemplateEntity.clampDay(transaction.date.day),
-                  active: true,
-                  lastGeneratedOn: transaction.date,
-                ),
-              );
-        }
       } else {
         await ref.read(updateTransactionUseCaseProvider).call(transaction);
       }
