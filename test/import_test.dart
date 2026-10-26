@@ -25,7 +25,6 @@ import 'package:expense_tracker/data/repositories/transaction_repository_impl.da
 import 'package:expense_tracker/data/services/file_picker_service.dart';
 import 'package:expense_tracker/data/services/google_drive_service.dart'
     show BackupException;
-import 'package:expense_tracker/domain/entities/import_transaction.dart';
 import 'package:expense_tracker/domain/usecases/import_month_usecase.dart';
 import 'package:expense_tracker/presentation/pages/backup_page.dart';
 import 'package:expense_tracker/presentation/providers/backup_providers.dart';
