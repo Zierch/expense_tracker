@@ -36,6 +36,17 @@ class DriveUploadResult {
   final String? webViewLink;
 }
 
+/// One backup file sitting in the Drive archive folder.
+class DriveBackupFile {
+  DriveBackupFile({required this.id, required this.name, this.modifiedTime});
+
+  final String id;
+  final String name;
+
+  /// When Drive last changed the file; null when it did not say.
+  final DateTime? modifiedTime;
+}
+
 /// Signs the user in with Google and archives JSON backups in Google Drive.
 ///
 /// Only the non-sensitive `drive.file` scope is requested, so the app can never
@@ -58,6 +69,16 @@ class GoogleDriveService {
 
   /// Stops a request from hanging forever on a dead connection.
   static const Duration _requestTimeout = Duration(seconds: 60);
+
+  /// How much of one file a restore will pull into memory. A month of
+  /// transactions is tens of kilobytes; anything past this was not written by
+  /// this app's export, and reading it would only cost memory.
+  static const int _maxBackupBytes = 10 * 1024 * 1024;
+
+  /// How many pages of a Drive listing to follow. Five pages of a hundred is
+  /// five hundred months — more than a decade of daily use — and stopping is
+  /// better than letting a listing that never ends hold the screen.
+  static const int _maxListPages = 5;
 
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
   final StreamController<GoogleSignInAccount?> _accountController =
@@ -299,6 +320,137 @@ class GoogleDriveService {
   // Google Drive REST helpers
   // ---------------------------------------------------------------------------
 
+  /// The backup files in the archive folder, newest name first.
+  ///
+  /// Reading never creates the folder: a Drive that has never been exported to
+  /// should be answered with "there is nothing here", not with an empty folder
+  /// made behind the user's back.
+  Future<List<DriveBackupFile>> listBackupFiles({String? folderName}) async {
+    await initialize();
+    final String folder = folderName ?? GoogleConfig.driveFolderName;
+    await _ensureDriveAccess();
+
+    final Map<String, String> headers = await _authorizationHeaders();
+    final String? folderId = await _findFolderId(headers, folder);
+    if (folderId == null) return <DriveBackupFile>[];
+
+    final String query = "'${_escapeQueryValue(folderId)}' in parents "
+        "and name contains 'expense-tracker-' "
+        "and mimeType = '$_jsonMime' and trashed = false";
+
+    final List<Map<String, dynamic>> files = await _listFiles(
+      headers,
+      query,
+      pageSize: 100,
+      fields: 'files(id,name,modifiedTime)',
+      orderBy: 'name desc',
+    );
+
+    return files
+        .map((Map<String, dynamic> file) => DriveBackupFile(
+              id: file['id'] as String,
+              name: file['name'] as String? ?? '',
+              modifiedTime:
+                  DateTime.tryParse(file['modifiedTime'] as String? ?? ''),
+            ))
+        .where((DriveBackupFile file) => file.name.isNotEmpty)
+        .toList();
+  }
+
+  /// The text of one stored backup.
+  ///
+  /// `alt=media` is what returns the file's bytes rather than its metadata.
+  Future<String> downloadJson(String fileId) async {
+    await initialize();
+    await _ensureDriveAccess();
+
+    final Uri uri =
+        Uri.parse('$_driveApi/files/${Uri.encodeComponent(fileId)}?alt=media');
+    return utf8.decode(await _downloadBytes(uri));
+  }
+
+  /// One file's bytes, refused past [_maxBackupBytes].
+  ///
+  /// Read as a stream rather than through `http.get`, which buffers whatever the
+  /// server sends before the caller can look at it: the cap has to be applied
+  /// while the bytes arrive, or a file far larger than a month of transactions is
+  /// already in memory by the time it is refused.
+  ///
+  /// The client is created and closed here because the response stream outlives
+  /// the request that started it — closing the client is what cancels a body
+  /// that is no longer wanted, on the error paths as much as on the happy one.
+  Future<Uint8List> _downloadBytes(Uri uri) async {
+    final http.Client client = http.Client();
+    try {
+      Map<String, String> headers = await _authorizationHeaders();
+      http.StreamedResponse response =
+          await _sendStreamed(client, uri, headers);
+
+      if (response.statusCode == 401) {
+        // Same as the upload path: an expired access token is refreshed once,
+        // and a genuine scope denial never reaches here — `_ensureDriveAccess`
+        // rejects that earlier.
+        headers = await _authorizationHeaders();
+        response = await _sendStreamed(client, uri, headers);
+        if (response.statusCode == 401) {
+          throw BackupException(
+            'Google Drive access is no longer valid. Sign out and sign in again '
+            'to grant it afresh.',
+          );
+        }
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final String body = await response.stream.bytesToString();
+        throw BackupException(
+          'Could not read that backup from Google Drive '
+          '(HTTP ${response.statusCode}).\n'
+          '${_extractErrorMessage(body)}',
+        );
+      }
+
+      // What the server declares, when it declares anything: refusing here saves
+      // reading a single byte of a file that is already too big.
+      final int? declared = response.contentLength;
+      if (declared != null && declared > _maxBackupBytes) {
+        throw _tooLargeToBeABackup();
+      }
+
+      final BytesBuilder collected = BytesBuilder(copy: false);
+      await for (final List<int> chunk in response.stream) {
+        collected.add(chunk);
+        if (collected.length > _maxBackupBytes) {
+          throw _tooLargeToBeABackup();
+        }
+      }
+
+      return collected.takeBytes();
+    } finally {
+      client.close();
+    }
+  }
+
+  BackupException _tooLargeToBeABackup() => BackupException(
+        'That backup is larger than ${_maxBackupBytes ~/ (1024 * 1024)} MB, so '
+        "it is not one of this app's month backups.",
+      );
+
+  Future<http.StreamedResponse> _sendStreamed(
+    http.Client client,
+    Uri uri,
+    Map<String, String> headers,
+  ) async {
+    try {
+      return await client
+          .send(http.Request('GET', uri)..headers.addAll(headers))
+          .timeout(_requestTimeout);
+    } on TimeoutException {
+      throw BackupException(
+        'The connection to Google Drive timed out. Check your connection and try again.',
+      );
+    }
+  }
+
   /// Makes sure the Drive scope is granted, requesting consent if needed.
   ///
   /// Must be triggered by a user action when
@@ -342,13 +494,8 @@ class GoogleDriveService {
     Map<String, String> headers,
     String name,
   ) async {
-    final String query = "name = '${_escapeQueryValue(name)}' "
-        "and mimeType = '$_folderMime' and trashed = false";
-
-    final List<Map<String, dynamic>> matches = await _listFiles(headers, query);
-    if (matches.isNotEmpty) {
-      return matches.first['id'] as String;
-    }
+    final String? existing = await _findFolderId(headers, name);
+    if (existing != null) return existing;
 
     final http.Response response = await _send(
       http.post(
@@ -376,6 +523,18 @@ class GoogleDriveService {
     return (jsonDecode(response.body) as Map<String, dynamic>)['id'] as String;
   }
 
+  Future<String?> _findFolderId(
+    Map<String, String> headers,
+    String name,
+  ) async {
+    final String query = "name = '${_escapeQueryValue(name)}' "
+        "and mimeType = '$_folderMime' and trashed = false";
+
+    final List<Map<String, dynamic>> matches = await _listFiles(headers, query);
+    if (matches.isEmpty) return null;
+    return matches.first['id'] as String;
+  }
+
   Future<String?> _findFileId(
     Map<String, String> headers,
     String folderId,
@@ -389,33 +548,55 @@ class GoogleDriveService {
     return matches.first['id'] as String;
   }
 
+  /// Every file matching [query], following Drive's paging.
+  ///
+  /// Drive answers with a page and a token, not with everything, so a folder the
+  /// user has been exporting to for years would otherwise come back quietly cut
+  /// off — a restore that silently skips the oldest months is worse than one
+  /// that says it could not read them.
   Future<List<Map<String, dynamic>>> _listFiles(
     Map<String, String> headers,
-    String query,
-  ) async {
-    final Uri uri = Uri.parse('$_driveApi/files').replace(
-      queryParameters: <String, String>{
-        'q': query,
-        'spaces': 'drive',
-        'pageSize': '10',
-        'fields': 'files(id,name)',
-      },
-    );
+    String query, {
+    int pageSize = 10,
+    String fields = 'files(id,name)',
+    String? orderBy,
+  }) async {
+    final List<Map<String, dynamic>> collected = <Map<String, dynamic>>[];
+    String? pageToken;
 
-    final http.Response response =
-        await _send(http.get(uri, headers: headers));
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw BackupException(
-        'Failed to read your Google Drive (HTTP ${response.statusCode}).\n'
-        '${_extractErrorMessage(response.body)}',
+    for (int page = 0; page < _maxListPages; page++) {
+      final Uri uri = Uri.parse('$_driveApi/files').replace(
+        queryParameters: <String, String>{
+          'q': query,
+          'spaces': 'drive',
+          'pageSize': '$pageSize',
+          'fields': fields,
+          if (orderBy != null) 'orderBy': orderBy,
+          if (pageToken != null) 'pageToken': pageToken,
+        },
       );
+
+      final http.Response response =
+          await _send(http.get(uri, headers: headers));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw BackupException(
+          'Failed to read your Google Drive (HTTP ${response.statusCode}).\n'
+          '${_extractErrorMessage(response.body)}',
+        );
+      }
+
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final List<dynamic> files =
+          body['files'] as List<dynamic>? ?? <dynamic>[];
+      collected.addAll(files.cast<Map<String, dynamic>>());
+
+      pageToken = body['nextPageToken'] as String?;
+      if (pageToken == null) break;
     }
 
-    final Map<String, dynamic> body =
-        jsonDecode(response.body) as Map<String, dynamic>;
-    final List<dynamic> files = body['files'] as List<dynamic>? ?? <dynamic>[];
-    return files.cast<Map<String, dynamic>>();
+    return collected;
   }
 
   /// Applies [_requestTimeout] and turns a timeout into a readable error.

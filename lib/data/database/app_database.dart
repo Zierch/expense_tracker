@@ -10,7 +10,8 @@ part 'app_database.g.dart';
 class Categories extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text().withLength(min: 1, max: 50)();
-  TextColumn get type => text().withLength(min: 1, max: 10)(); // 'income' | 'expense'
+  TextColumn get type =>
+      text().withLength(min: 1, max: 10)(); // 'income' | 'expense'
 }
 
 class Subcategories extends Table {
@@ -24,10 +25,12 @@ class Transactions extends Table {
   TextColumn get type => text().withLength(min: 1, max: 10)();
   RealColumn get amount => real()();
   IntColumn get categoryId => integer().references(Categories, #id)();
-  IntColumn get subcategoryId => integer().nullable().references(Subcategories, #id)();
+  IntColumn get subcategoryId =>
+      integer().nullable().references(Subcategories, #id)();
   TextColumn get note => text().nullable()();
   DateTimeColumn get date => dateTime()();
-  DateTimeColumn get createdAt => dateTime().clientDefault(() => DateTime.now())();
+  DateTimeColumn get createdAt =>
+      dateTime().clientDefault(() => DateTime.now())();
 }
 
 @DriftDatabase(tables: [Categories, Subcategories, Transactions])
@@ -83,7 +86,8 @@ class AppDatabase extends _$AppDatabase {
   /// No sample transactions are inserted, so a fresh install starts empty.
   Future<void> _seedData() async {
     // Income category + subcategories
-    final incomeCatId = await into(categories).insert(CategoriesCompanion.insert(
+    final incomeCatId =
+        await into(categories).insert(CategoriesCompanion.insert(
       name: 'Income',
       type: 'income',
     ));
@@ -113,7 +117,8 @@ class AppDatabase extends _$AppDatabase {
     ));
 
     // Expense category + subcategories
-    final expenseCatId = await into(categories).insert(CategoriesCompanion.insert(
+    final expenseCatId =
+        await into(categories).insert(CategoriesCompanion.insert(
       name: 'Expense',
       type: 'expense',
     ));
@@ -133,18 +138,23 @@ class AppDatabase extends _$AppDatabase {
 
   // Transaction queries
   Future<List<Transaction>> getAllTransactions() => select(transactions).get();
-  Stream<List<Transaction>> watchAllTransactions() => select(transactions).watch();
+  Stream<List<Transaction>> watchAllTransactions() =>
+      select(transactions).watch();
 
-  Future<List<Transaction>> getTransactionsByDateRange(DateTime start, DateTime end) {
+  Future<List<Transaction>> getTransactionsByDateRange(
+      DateTime start, DateTime end) {
     return (select(transactions)
           ..where((t) => t.date.isBetween(Variable(start), Variable(end)))
           ..orderBy([(t) => OrderingTerm.desc(t.date)]))
         .get();
   }
 
-  Future<int> insertTransaction(TransactionsCompanion transaction) => into(transactions).insert(transaction);
-  Future<bool> updateTransaction(TransactionsCompanion transaction) => update(transactions).replace(transaction);
-  Future<int> deleteTransaction(int id) => (delete(transactions)..where((t) => t.id.equals(id))).go();
+  Future<int> insertTransaction(TransactionsCompanion transaction) =>
+      into(transactions).insert(transaction);
+  Future<bool> updateTransaction(TransactionsCompanion transaction) =>
+      update(transactions).replace(transaction);
+  Future<int> deleteTransaction(int id) =>
+      (delete(transactions)..where((t) => t.id.equals(id))).go();
 
   Future<double> getTotalIncome({DateTime? start, DateTime? end}) async {
     var query = select(transactions)..where((t) => t.type.equals('income'));
@@ -164,10 +174,12 @@ class AppDatabase extends _$AppDatabase {
     return rows.fold<double>(0.0, (sum, t) => sum + t.amount);
   }
 
-  Future<Map<String, double>> getExpenseByCategory({DateTime? start, DateTime? end}) async {
+  Future<Map<String, double>> getExpenseByCategory(
+      {DateTime? start, DateTime? end}) async {
     var query = select(transactions).join([
       innerJoin(categories, categories.id.equalsExp(transactions.categoryId)),
-      leftOuterJoin(subcategories, subcategories.id.equalsExp(transactions.subcategoryId)),
+      leftOuterJoin(subcategories,
+          subcategories.id.equalsExp(transactions.subcategoryId)),
     ])
       ..where(transactions.type.equals('expense'));
 
@@ -178,16 +190,19 @@ class AppDatabase extends _$AppDatabase {
     final rows = await query.get();
     final Map<String, double> result = {};
     for (final row in rows) {
-      final key = row.readTableOrNull(subcategories)?.name ?? row.readTable(categories).name;
+      final key = row.readTableOrNull(subcategories)?.name ??
+          row.readTable(categories).name;
       result[key] = (result[key] ?? 0) + row.readTable(transactions).amount;
     }
     return result;
   }
 
-  Future<Map<String, double>> getIncomeByCategory({DateTime? start, DateTime? end}) async {
+  Future<Map<String, double>> getIncomeByCategory(
+      {DateTime? start, DateTime? end}) async {
     var query = select(transactions).join([
       innerJoin(categories, categories.id.equalsExp(transactions.categoryId)),
-      leftOuterJoin(subcategories, subcategories.id.equalsExp(transactions.subcategoryId)),
+      leftOuterJoin(subcategories,
+          subcategories.id.equalsExp(transactions.subcategoryId)),
     ])
       ..where(transactions.type.equals('income'));
 
@@ -198,7 +213,8 @@ class AppDatabase extends _$AppDatabase {
     final rows = await query.get();
     final Map<String, double> result = {};
     for (final row in rows) {
-      final key = row.readTableOrNull(subcategories)?.name ?? row.readTable(categories).name;
+      final key = row.readTableOrNull(subcategories)?.name ??
+          row.readTable(categories).name;
       result[key] = (result[key] ?? 0) + row.readTable(transactions).amount;
     }
     return result;
@@ -213,7 +229,84 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<List<Subcategory>> getSubcategories(int categoryId) {
-    return (select(subcategories)..where((s) => s.categoryId.equals(categoryId))).get();
+    return (select(subcategories)
+          ..where((s) => s.categoryId.equals(categoryId)))
+        .get();
+  }
+
+  // Import queries
+
+  /// The id of a category with this name and type, making one when the local
+  /// database has never seen it.
+  ///
+  /// An import brings names, not ids: the backup was written by an install whose
+  /// categories may have been renamed, added to, or seeded differently. Matched
+  /// on name *and* type because "Gift" is a legitimate name on both sides, and on
+  /// the exact name because a "restore" that quietly renamed anything would be
+  /// lying about what it restored.
+  Future<int> findOrCreateCategory(String name, String type) async {
+    final Category? existing = await (select(categories)
+          ..where((c) => c.name.equals(name) & c.type.equals(type))
+          ..limit(1))
+        .getSingleOrNull();
+    if (existing != null) return existing.id;
+
+    return into(categories)
+        .insert(CategoriesCompanion.insert(name: name, type: type));
+  }
+
+  Future<int> findOrCreateSubcategory(String name, int categoryId) async {
+    final Subcategory? existing = await (select(subcategories)
+          ..where((s) => s.name.equals(name) & s.categoryId.equals(categoryId))
+          ..limit(1))
+        .getSingleOrNull();
+    if (existing != null) return existing.id;
+
+    return into(subcategories).insert(
+      SubcategoriesCompanion.insert(name: name, categoryId: categoryId),
+    );
+  }
+
+  /// Whether a row with these exact values is already stored on [date]'s day.
+  ///
+  /// The backup carries the ids the rows had in the install that wrote it, and
+  /// those ids mean nothing here — a fresh install numbers its rows from one, so
+  /// importing by id would either collide or leave holes. Identity is therefore
+  /// the content: two rows are the same transaction when every field the user
+  /// can see matches. A second import of the same file therefore adds nothing,
+  /// which is what makes retrying a restore safe.
+  ///
+  /// The day is compared as a *range*, not as an instant. A transaction is a
+  /// calendar day, but rows written by older versions of the app still carry the
+  /// time of day they were entered at, while an import always normalises to
+  /// midnight — so matching midnight exactly would miss the very row it is meant
+  /// to recognise and write a second copy of it. Semantics here must match
+  /// [MonthRange]'s: the unit is the day.
+  Future<bool> hasMatchingTransaction({
+    required DateTime date,
+    required String type,
+    required double amount,
+    required int categoryId,
+    int? subcategoryId,
+    String? note,
+  }) async {
+    final DateTime dayStart = DateTime(date.year, date.month, date.day);
+    final DateTime dayEnd = DateTime(date.year, date.month, date.day + 1);
+
+    final query = select(transactions)
+      ..where((t) =>
+          t.date.isBiggerOrEqualValue(dayStart) &
+          t.date.isSmallerThanValue(dayEnd) &
+          t.type.equals(type) &
+          t.amount.equals(amount) &
+          t.categoryId.equals(categoryId) &
+          (subcategoryId == null
+              ? t.subcategoryId.isNull()
+              : t.subcategoryId.equals(subcategoryId)) &
+          (note == null ? t.note.isNull() : t.note.equals(note)))
+      ..limit(1);
+
+    return (await query.getSingleOrNull()) != null;
   }
 
   /// Newest first, and repeatable.
@@ -232,7 +325,8 @@ class AppDatabase extends _$AppDatabase {
   Future<List<TransactionWithNames>> getTransactionsWithJoinedNames() async {
     final rows = await (select(transactions).join([
       innerJoin(categories, categories.id.equalsExp(transactions.categoryId)),
-      leftOuterJoin(subcategories, subcategories.id.equalsExp(transactions.subcategoryId)),
+      leftOuterJoin(subcategories,
+          subcategories.id.equalsExp(transactions.subcategoryId)),
     ])
           ..orderBy(_newestFirst))
         .get();
@@ -248,7 +342,8 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<TransactionWithNames>> watchTransactionsWithJoinedNames() {
     return (select(transactions).join([
       innerJoin(categories, categories.id.equalsExp(transactions.categoryId)),
-      leftOuterJoin(subcategories, subcategories.id.equalsExp(transactions.subcategoryId)),
+      leftOuterJoin(subcategories,
+          subcategories.id.equalsExp(transactions.subcategoryId)),
     ])
           ..orderBy(_newestFirst))
         .watch()
@@ -263,10 +358,12 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<List<TransactionWithNames>> getTransactionsByDateRangeWithNames(DateTime start, DateTime end) async {
+  Future<List<TransactionWithNames>> getTransactionsByDateRangeWithNames(
+      DateTime start, DateTime end) async {
     final query = select(transactions).join([
       innerJoin(categories, categories.id.equalsExp(transactions.categoryId)),
-      leftOuterJoin(subcategories, subcategories.id.equalsExp(transactions.subcategoryId)),
+      leftOuterJoin(subcategories,
+          subcategories.id.equalsExp(transactions.subcategoryId)),
     ]);
     query.where(transactions.date.isBetween(Variable(start), Variable(end)));
     final rows = await query.get();

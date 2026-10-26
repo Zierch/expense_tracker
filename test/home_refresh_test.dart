@@ -13,6 +13,7 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
+import 'package:expense_tracker/domain/entities/import_transaction.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:expense_tracker/presentation/pages/home_page.dart';
@@ -54,10 +55,12 @@ class _CountingRepository implements TransactionRepository {
       _inner.insertTransaction(transaction);
 
   @override
-  Future<List<TransactionEntity>> getAllTransactions() => _inner.getAllTransactions();
+  Future<List<TransactionEntity>> getAllTransactions() =>
+      _inner.getAllTransactions();
 
   @override
-  Future<List<TransactionEntity>> getTransactionsByDateRange(DateTime start, DateTime end) =>
+  Future<List<TransactionEntity>> getTransactionsByDateRange(
+          DateTime start, DateTime end) =>
       _inner.getTransactionsByDateRange(start, end);
 
   @override
@@ -72,12 +75,18 @@ class _CountingRepository implements TransactionRepository {
       _inner.getTotalExpense(start: start, end: end);
 
   @override
-  Future<Map<String, double>> getExpenseByCategory({DateTime? start, DateTime? end}) =>
+  Future<Map<String, double>> getExpenseByCategory(
+          {DateTime? start, DateTime? end}) =>
       _inner.getExpenseByCategory(start: start, end: end);
 
   @override
-  Future<Map<String, double>> getIncomeByCategory({DateTime? start, DateTime? end}) =>
+  Future<Map<String, double>> getIncomeByCategory(
+          {DateTime? start, DateTime? end}) =>
       _inner.getIncomeByCategory(start: start, end: end);
+  @override
+  Future<ImportWriteResult> importTransactions(
+          List<ImportTransaction> transactions) =>
+      _inner.importTransactions(transactions);
 }
 
 /// Pumps the dashboard with [repository] behind it.
@@ -148,14 +157,17 @@ void main() {
       final int watchesBefore = repository.watchCalls;
       final int totalsBefore = repository.totalIncomeCalls;
       expect(watchesBefore, greaterThan(0),
-          reason: 'the pull below is only meaningful if the screen read something first');
+          reason:
+              'the pull below is only meaningful if the screen read something first');
 
       await _pullToRefresh(tester);
 
       expect(repository.watchCalls, greaterThan(watchesBefore),
-          reason: 'the pulled stream has to be dropped and subscribed to again');
+          reason:
+              'the pulled stream has to be dropped and subscribed to again');
       expect(repository.totalIncomeCalls, greaterThan(totalsBefore),
-          reason: 'the totals are a separate query and have to be re-run too, or the '
+          reason:
+              'the totals are a separate query and have to be re-run too, or the '
               'card would keep a stale month next to fresh rows');
     },
   );
@@ -170,14 +182,16 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('No transactions yet'), findsOneWidget,
-          reason: 'this test is about the empty branch; without the assertion it would '
+          reason:
+              'this test is about the empty branch; without the assertion it would '
               'pass against the list branch and prove nothing');
 
       final int watchesBefore = repository.watchCalls;
       await _pullToRefresh(tester);
 
       expect(repository.watchCalls, greaterThan(watchesBefore),
-          reason: 'a short, non-scrollable child makes `RefreshIndicator` silently inert, '
+          reason:
+              'a short, non-scrollable child makes `RefreshIndicator` silently inert, '
               'so the empty state must still report overscroll');
     },
   );
@@ -192,16 +206,19 @@ void main() {
       await tester.pumpAndSettle();
 
       // Start the pull but do not wait for it to finish
-      await tester.fling(find.byType(CustomScrollView), const Offset(0, 300), 1000);
+      await tester.fling(
+          find.byType(CustomScrollView), const Offset(0, 300), 1000);
       await tester.pump();
 
       expect(find.byType(RefreshProgressIndicator), findsOneWidget,
-          reason: 'the pull has to actually arm the refresh, or unmounting the page '
+          reason:
+              'the pull has to actually arm the refresh, or unmounting the page '
               'below proves nothing');
 
       // Replace the tree before the refresh completes, so the providers are disposed
       // while _refresh() is still awaiting them
-      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: Text('gone'))));
+      await tester
+          .pumpWidget(const MaterialApp(home: Scaffold(body: Text('gone'))));
       await tester.pumpAndSettle();
 
       // A lifecycle smoke test, not proof of the `catch` in `_refresh()`: a disposed

@@ -65,6 +65,10 @@ Requires Android 7.0 or newer (minSdk 24).
 - Indonesian rupiah (IDR) formatting
 - Optional per-month JSON export to a `Expense Tracker` folder in your own
   Google Drive; re-exporting a month replaces its file instead of duplicating it
+- Import a backup back in — a file you pick from storage, or every month in the
+  Drive folder in one go. Transactions already stored are matched on their
+  content and skipped, so importing the same file twice adds nothing, and a
+  category the backup names is created if this install has never seen it
 - PDF report for any date range, with totals, a breakdown per category and every
   transaction; shared straight to Files or a chat from Android's share sheet, and
   no Google account needed
@@ -332,8 +336,9 @@ year-boundary arithmetic), the month boundaries themselves — the in-memory pre
 and the SQL range, run against a real in-memory database — the dashboard's month
 picker (which months it offers, and that a choice comes back as a month anchor), the
 transaction row widget, the dashboard's pull-to-refresh, the balance's hide/show
-toggle, and the release-config invariants that keep signing, backup rules and the
-OAuth identity from silently regressing.
+toggle, the import of a backup (what it writes, what it refuses, and that a second
+import of the same file writes nothing), and the release-config invariants that keep
+signing, backup rules and the OAuth identity from silently regressing.
 
 The database-backed tests need a SQLite library for the *host* to load, which is a
 different build from the one the app ships: Windows uses the `winsqlite3.dll` that

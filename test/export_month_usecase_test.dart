@@ -1,3 +1,4 @@
+import 'package:expense_tracker/domain/entities/import_transaction.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:expense_tracker/domain/usecases/export_month_usecase.dart';
@@ -9,6 +10,12 @@ import 'package:flutter_test/flutter_test.dart';
 /// `getIncomeByCategory`, which key on `subcategoryName ?? categoryName`.
 class _FakeTransactionRepository implements TransactionRepository {
   _FakeTransactionRepository(this.transactions);
+
+  // A write path these tests do not walk: they read totals and rows.
+  @override
+  Future<ImportWriteResult> importTransactions(
+          List<ImportTransaction> transactions) async =>
+      const ImportWriteResult(imported: 0, duplicates: 0);
 
   final List<TransactionEntity> transactions;
 
@@ -188,7 +195,8 @@ void main() {
     expect(export.totalExpense, 147000);
   });
 
-  test('includes a transaction in the final microsecond of the month', () async {
+  test('includes a transaction in the final microsecond of the month',
+      () async {
     rows.add(
       _transaction(
         id: 10,
@@ -252,7 +260,8 @@ void main() {
       <int>[1, 2, 3],
     );
 
-    final Map<String, dynamic> first = transactions.first as Map<String, dynamic>;
+    final Map<String, dynamic> first =
+        transactions.first as Map<String, dynamic>;
     expect(first['date'], '2026-01-02');
     expect(first['type'], 'income');
     expect(first['category'], 'Salary');

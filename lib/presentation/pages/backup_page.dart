@@ -11,6 +11,7 @@ import 'package:expense_tracker/data/services/google_drive_service.dart';
 import 'package:expense_tracker/data/services/pdf_report_builder.dart';
 import 'package:expense_tracker/domain/usecases/export_month_usecase.dart';
 import 'package:expense_tracker/domain/usecases/export_pdf_usecase.dart';
+import 'package:expense_tracker/domain/usecases/import_month_usecase.dart';
 import 'package:expense_tracker/presentation/providers/backup_providers.dart';
 import 'package:expense_tracker/presentation/providers/update_providers.dart';
 
@@ -146,6 +147,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           tone: theme.colorScheme.primary,
         ),
         const SizedBox(height: 12),
+        const _ImportCard(signedIn: false),
+        const SizedBox(height: 12),
         const _PdfCard(),
         const SizedBox(height: 12),
         const _UpdateCard(),
@@ -269,6 +272,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        const _ImportCard(signedIn: true),
         const SizedBox(height: 12),
         const _PdfCard(),
         const SizedBox(height: 12),
@@ -893,4 +898,425 @@ class _UpdateText extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Restores transactions from a backup: a file the user picks, or the files
+/// already archived in Drive.
+///
+/// It sits next to the export cards because it is the inverse of what they do,
+/// and the file half works signed out — a backup on the phone has nothing to do
+/// with a Google account.
+class _ImportCard extends ConsumerStatefulWidget {
+  const _ImportCard({required this.signedIn});
+
+  /// Whether the Drive half is offered. The file half is always there.
+  final bool signedIn;
+
+  @override
+  ConsumerState<_ImportCard> createState() => _ImportCardState();
+}
+
+class _ImportCardState extends ConsumerState<_ImportCard> {
+  bool _busy = false;
+
+  /// What the last import did, and what went wrong if anything did.
+  String? _summary;
+  String? _error;
+
+  Future<void> _importFile() async {
+    setState(() {
+      _busy = true;
+      _summary = null;
+      _error = null;
+    });
+
+    try {
+      final String? text =
+          await ref.read(filePickerServiceProvider).pickJsonText();
+      // Backing out of the chooser is not a failure: there is nothing to report.
+      if (text == null || !mounted) return;
+
+      final ImportResult result =
+          await ref.read(importMonthUseCaseProvider).call(text);
+      if (!mounted) return;
+      setState(() => _summary = _describeImport(result));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = _describeImportError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _restoreFromDrive() async {
+    setState(() {
+      _busy = true;
+      _summary = null;
+      _error = null;
+    });
+
+    final List<DriveBackupFile> files;
+    try {
+      files = await ref.read(googleDriveServiceProvider).listBackupFiles();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = _describeImportError(error));
+      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+
+    if (!mounted) return;
+    if (files.isEmpty) {
+      setState(() => _summary =
+          'No backups found in the "${GoogleConfig.driveFolderName}" folder in your Drive.');
+      return;
+    }
+
+    // Not dismissible by drag or by tapping outside: a restore of several
+    // months takes a while, and a sheet that vanished mid-way would dispose the
+    // loop that is writing rows — leaving some months in and the user told
+    // nothing about which. The sheet owns its own Close button instead.
+    final String? outcome = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (BuildContext context) => _DriveRestoreSheet(files: files),
+    );
+
+    if (!mounted || outcome == null) return;
+    setState(() => _summary = outcome);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(Icons.settings_backup_restore,
+                    color: theme.colorScheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Import a backup',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Restores transactions from a JSON backup this app exported. Rows '
+              'that are already stored are left as they are, so importing the '
+              'same file twice changes nothing.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: _busy ? null : _importFile,
+                icon: _busy
+                    ? const _ButtonSpinner()
+                    : const Icon(Icons.folder_open),
+                label: const Text('Choose a backup file'),
+              ),
+            ),
+            if (widget.signedIn) ...<Widget>[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _restoreFromDrive,
+                  icon: const Icon(Icons.cloud_download_outlined),
+                  label: const Text('Restore from Google Drive'),
+                ),
+              ),
+            ],
+            if (_summary != null) ...<Widget>[
+              const SizedBox(height: 12),
+              _UpdateText(_summary!, tone: theme.colorScheme.primary),
+            ],
+            if (_error != null) ...<Widget>[
+              const SizedBox(height: 12),
+              _UpdateText(_error!, tone: theme.colorScheme.error),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The months found in Drive, with a checkbox each, and the import itself.
+///
+/// The work happens here rather than behind the sheet so that progress has
+/// somewhere to be shown: a restore of eight months is eight downloads, and a
+/// button that only spins cannot say whether it is on the second or the last.
+class _DriveRestoreSheet extends ConsumerStatefulWidget {
+  const _DriveRestoreSheet({required this.files});
+
+  final List<DriveBackupFile> files;
+
+  @override
+  ConsumerState<_DriveRestoreSheet> createState() => _DriveRestoreSheetState();
+}
+
+class _DriveRestoreSheetState extends ConsumerState<_DriveRestoreSheet> {
+  static final RegExp _nameStamp = RegExp(r'expense-tracker-(\d{4})-(\d{2})');
+  static final DateFormat _monthLabel = DateFormat('MMMM yyyy');
+
+  /// Everything is chosen to begin with: a restore is usually "put it all back".
+  late final Set<String> _selected =
+      widget.files.map((DriveBackupFile file) => file.id).toSet();
+
+  bool _busy = false;
+  int _done = 0;
+
+  /// The first failure's own words, when there was one. A count of failures says
+  /// something went wrong; the message says what.
+  String? _failure;
+
+  Future<void> _import() async {
+    setState(() {
+      _busy = true;
+      _failure = null;
+      _done = 0;
+    });
+
+    int months = 0;
+    int imported = 0;
+    int duplicates = 0;
+    int unreadable = 0;
+    int failed = 0;
+
+    final List<DriveBackupFile> chosen = widget.files
+        .where((DriveBackupFile file) => _selected.contains(file.id))
+        .toList();
+
+    for (final DriveBackupFile file in chosen) {
+      try {
+        final String json =
+            await ref.read(googleDriveServiceProvider).downloadJson(file.id);
+        final ImportResult result =
+            await ref.read(importMonthUseCaseProvider).call(json);
+        months++;
+        imported += result.imported;
+        duplicates += result.duplicates;
+        unreadable += result.unreadable;
+      } catch (error) {
+        // One unreadable file must not abandon the rest: the others are still
+        // the user's data, and the summary says how many did not come through.
+        failed++;
+        _failure ??= _describeImportError(error);
+      }
+      if (!mounted) return;
+      setState(() => _done++);
+    }
+
+    if (!mounted) return;
+
+    // Nothing landed at all: the file's own message is the useful thing to say,
+    // not a tally of zeroes.
+    if (months == 0 && _failure != null) {
+      Navigator.pop(context, _failure);
+      return;
+    }
+
+    Navigator.pop(
+      context,
+      _describeDriveRestore(
+        months: months,
+        imported: imported,
+        duplicates: duplicates,
+        unreadable: unreadable,
+        failed: failed,
+      ),
+    );
+  }
+
+  String _labelFor(DriveBackupFile file) {
+    final Match? match = _nameStamp.firstMatch(file.name);
+    if (match == null) return file.name;
+
+    final int? year = int.tryParse(match.group(1)!);
+    final int? month = int.tryParse(match.group(2)!);
+    if (year == null || month == null || month < 1 || month > 12)
+      return file.name;
+
+    return _monthLabel.format(DateTime(year, month));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final bool allSelected = _selected.length == widget.files.length;
+
+    return PopScope(
+      // The Android back gesture goes the same way as the Close button: it is
+      // refused while rows are being written, and allowed once they are not.
+      canPop: !_busy,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Backups in Google Drive',
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Choose the months to restore. Transactions already stored are '
+                'skipped.',
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: allSelected,
+                onChanged: _busy
+                    ? null
+                    : (bool? value) => setState(() {
+                          _selected.clear();
+                          if (value ?? false) {
+                            _selected.addAll(
+                              widget.files
+                                  .map((DriveBackupFile file) => file.id),
+                            );
+                          }
+                        }),
+                title: const Text('All months'),
+              ),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: widget.files
+                      .map((DriveBackupFile file) => CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            value: _selected.contains(file.id),
+                            onChanged: _busy
+                                ? null
+                                : (bool? value) => setState(() {
+                                      if (value ?? false) {
+                                        _selected.add(file.id);
+                                      } else {
+                                        _selected.remove(file.id);
+                                      }
+                                    }),
+                            title: Text(_labelFor(file)),
+                            subtitle: Text(
+                              file.modifiedTime == null
+                                  ? file.name
+                                  : '${file.name} · '
+                                      '${DateFormat('d MMM yyyy').format(file.modifiedTime!)}',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ))
+                      .toList(),
+                ),
+              ),
+              if (_failure != null && !_busy) ...<Widget>[
+                const SizedBox(height: 8),
+                _UpdateText(_failure!, tone: theme.colorScheme.error),
+              ],
+              const SizedBox(height: 12),
+              Row(
+                children: <Widget>[
+                  TextButton(
+                    onPressed: _busy ? null : () => Navigator.pop(context),
+                    child: const Text('Close'),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _busy || _selected.isEmpty ? null : _import,
+                      icon: _busy
+                          ? const _ButtonSpinner()
+                          : const Icon(Icons.download),
+                      label: Text(
+                        _busy
+                            ? 'Importing $_done of ${_selected.length}...'
+                            : 'Import ${_selected.length} selected',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One file's outcome, in words.
+String _describeImport(ImportResult result) {
+  final String month =
+      result.monthLabel.isEmpty ? 'the backup' : result.monthLabel;
+  final StringBuffer summary = StringBuffer(
+    'Imported ${result.imported} ${result.imported == 1 ? 'transaction' : 'transactions'} '
+    'from $month',
+  );
+  if (result.duplicates > 0) {
+    summary.write(', ${result.duplicates} already there');
+  }
+  if (result.unreadable > 0) {
+    summary.write(', ${_unreadableClause(result.unreadable)}');
+  }
+  summary.write('.');
+  return summary.toString();
+}
+
+String _unreadableClause(int unreadable) => unreadable == 1
+    ? 'one row could not be read'
+    : '$unreadable rows could not be read';
+
+/// Several files' outcome, in words.
+String _describeDriveRestore({
+  required int months,
+  required int imported,
+  required int duplicates,
+  required int unreadable,
+  required int failed,
+}) {
+  final StringBuffer summary = StringBuffer(
+    'Imported $imported ${imported == 1 ? 'transaction' : 'transactions'} '
+    'from $months ${months == 1 ? 'month' : 'months'}',
+  );
+  if (duplicates > 0) {
+    summary.write(', $duplicates already there');
+  }
+  if (unreadable > 0) {
+    summary.write(', ${_unreadableClause(unreadable)}');
+  }
+  if (failed > 0) {
+    summary.write(
+      '. $failed ${failed == 1 ? 'file' : 'files'} could not be read',
+    );
+    summary.write('.');
+    return summary.toString();
+  }
+  summary.write('.');
+  return summary.toString();
+}
+
+/// A failure's message, when the failure was raised for the user to read.
+String _describeImportError(Object error) {
+  if (error is ImportException) return error.message;
+  if (error is BackupException) return error.message;
+  return '$error';
 }

@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
+import 'package:expense_tracker/domain/entities/import_transaction.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 
@@ -16,12 +17,16 @@ class TransactionRepositoryImpl implements TransactionRepository {
 
   @override
   Stream<List<TransactionEntity>> watchAllTransactions() {
-    return _database.watchTransactionsWithJoinedNames().map((rows) => rows.map(_toEntity).toList());
+    return _database
+        .watchTransactionsWithJoinedNames()
+        .map((rows) => rows.map(_toEntity).toList());
   }
 
   @override
-  Future<List<TransactionEntity>> getTransactionsByDateRange(DateTime start, DateTime end) async {
-    final rows = await _database.getTransactionsByDateRangeWithNames(start, end);
+  Future<List<TransactionEntity>> getTransactionsByDateRange(
+      DateTime start, DateTime end) async {
+    final rows =
+        await _database.getTransactionsByDateRangeWithNames(start, end);
     return rows.map(_toEntity).toList();
   }
 
@@ -66,13 +71,64 @@ class TransactionRepositoryImpl implements TransactionRepository {
   }
 
   @override
-  Future<Map<String, double>> getExpenseByCategory({DateTime? start, DateTime? end}) {
+  Future<Map<String, double>> getExpenseByCategory(
+      {DateTime? start, DateTime? end}) {
     return _database.getExpenseByCategory(start: start, end: end);
   }
 
   @override
-  Future<Map<String, double>> getIncomeByCategory({DateTime? start, DateTime? end}) {
+  Future<Map<String, double>> getIncomeByCategory(
+      {DateTime? start, DateTime? end}) {
     return _database.getIncomeByCategory(start: start, end: end);
+  }
+
+  @override
+  Future<ImportWriteResult> importTransactions(
+      List<ImportTransaction> transactions) {
+    return _database.transaction(() async {
+      int imported = 0;
+      int duplicates = 0;
+
+      for (final ImportTransaction transaction in transactions) {
+        final int categoryId = await _database.findOrCreateCategory(
+            transaction.categoryName, transaction.type);
+        final String? subcategoryName = transaction.subcategoryName;
+        final int? subcategoryId = subcategoryName == null
+            ? null
+            : await _database.findOrCreateSubcategory(
+                subcategoryName, categoryId);
+
+        final bool alreadyStored = await _database.hasMatchingTransaction(
+          date: transaction.date,
+          type: transaction.type,
+          amount: transaction.amount,
+          categoryId: categoryId,
+          subcategoryId: subcategoryId,
+          note: transaction.note,
+        );
+        if (alreadyStored) {
+          duplicates++;
+          continue;
+        }
+
+        await _database.insertTransaction(TransactionsCompanion.insert(
+          type: transaction.type,
+          amount: transaction.amount,
+          categoryId: categoryId,
+          subcategoryId: Value(subcategoryId),
+          note: Value(transaction.note),
+          date: transaction.date,
+          // The backup has no creation time to restore, and the dashboard orders
+          // one day's rows by it, so the row's own date is the honest fill: it
+          // keeps a day's imported rows in the order they were stored rather than
+          // in the order a clock happened to be read.
+          createdAt: Value(transaction.date),
+        ));
+        imported++;
+      }
+
+      return ImportWriteResult(imported: imported, duplicates: duplicates);
+    });
   }
 
   TransactionEntity _toEntity(TransactionWithNames row) {

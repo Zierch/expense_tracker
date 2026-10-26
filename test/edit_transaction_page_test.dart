@@ -11,6 +11,7 @@ import 'dart:async';
 import 'package:drift/drift.dart' show Value;
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
+import 'package:expense_tracker/domain/entities/import_transaction.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:expense_tracker/presentation/pages/add_transaction_page.dart';
@@ -41,13 +42,16 @@ class _Recorder implements TransactionRepository {
       _inner.insertTransaction(transaction);
 
   @override
-  Future<List<TransactionEntity>> getAllTransactions() => _inner.getAllTransactions();
+  Future<List<TransactionEntity>> getAllTransactions() =>
+      _inner.getAllTransactions();
 
   @override
-  Stream<List<TransactionEntity>> watchAllTransactions() => _inner.watchAllTransactions();
+  Stream<List<TransactionEntity>> watchAllTransactions() =>
+      _inner.watchAllTransactions();
 
   @override
-  Future<List<TransactionEntity>> getTransactionsByDateRange(DateTime start, DateTime end) =>
+  Future<List<TransactionEntity>> getTransactionsByDateRange(
+          DateTime start, DateTime end) =>
       _inner.getTransactionsByDateRange(start, end);
 
   @override
@@ -62,12 +66,18 @@ class _Recorder implements TransactionRepository {
       _inner.getTotalExpense(start: start, end: end);
 
   @override
-  Future<Map<String, double>> getExpenseByCategory({DateTime? start, DateTime? end}) =>
+  Future<Map<String, double>> getExpenseByCategory(
+          {DateTime? start, DateTime? end}) =>
       _inner.getExpenseByCategory(start: start, end: end);
 
   @override
-  Future<Map<String, double>> getIncomeByCategory({DateTime? start, DateTime? end}) =>
+  Future<Map<String, double>> getIncomeByCategory(
+          {DateTime? start, DateTime? end}) =>
       _inner.getIncomeByCategory(start: start, end: end);
+  @override
+  Future<ImportWriteResult> importTransactions(
+          List<ImportTransaction> transactions) =>
+      _inner.importTransactions(transactions);
 }
 
 /// The same, except that the rows the page loads its transaction from never arrive.
@@ -100,7 +110,8 @@ void main() {
     final GoRouter router = GoRouter(
       initialLocation: '/edit',
       routes: <RouteBase>[
-        GoRoute(path: '/', builder: (_, __) => const Scaffold(body: Text('home'))),
+        GoRoute(
+            path: '/', builder: (_, __) => const Scaffold(body: Text('home'))),
         GoRoute(
           path: '/edit',
           builder: (_, __) => AddTransactionPage(transactionId: transactionId),
@@ -140,7 +151,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Edit Transaction'), findsOneWidget,
-          reason: 'the page has to be in edit mode, or the assertion below would be '
+          reason:
+              'the page has to be in edit mode, or the assertion below would be '
               'about the add path');
       // The loaded amount, so that a tap cannot land on a form that is still empty: that
       // would fail later as "the button did nothing", which reads like a different problem.
@@ -153,17 +165,21 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(repository.updated, isNotNull,
-          reason: 'the button has to reach the repository, or the rest of this test '
+          reason:
+              'the button has to reach the repository, or the rest of this test '
               'passes for the wrong reason');
       expect(repository.updated!.id, id);
       expect(repository.updated!.createdAt, recorded,
-          reason: 'the page must pass on the stored creation time, not the time of '
+          reason:
+              'the page must pass on the stored creation time, not the time of '
               'the edit');
 
-      final Transaction row =
-          await (db.select(db.transactions)..where((t) => t.id.equals(id))).getSingle();
+      final Transaction row = await (db.select(db.transactions)
+            ..where((t) => t.id.equals(id)))
+          .getSingle();
       expect(row.amount, 10000,
-          reason: 'the recorded update must have reached the database, and nothing '
+          reason:
+              'the recorded update must have reached the database, and nothing '
               'else about the row should have moved');
     },
   );
@@ -173,7 +189,8 @@ void main() {
     (AppDatabase db, WidgetTester tester) async {
       useTallWindow(tester);
 
-      final _StalledRepository repository = _StalledRepository(TransactionRepositoryImpl(db));
+      final _StalledRepository repository =
+          _StalledRepository(TransactionRepositoryImpl(db));
 
       await pumpEditPage(tester, db, 1, repository);
       await tester.pumpAndSettle();
@@ -181,7 +198,8 @@ void main() {
       // Without the row there is nothing truthful to write: the category on screen is the
       // first one the categories query returned, not the transaction's.
       expect(find.text('Update'), findsOneWidget);
-      expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull,
+      expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+          isNull,
           reason: 'an edit whose row has not arrived must not offer to save');
 
       await tester.tap(find.text('Update'), warnIfMissed: false);

@@ -1,9 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import 'package:expense_tracker/data/services/file_picker_service.dart';
 import 'package:expense_tracker/data/services/google_drive_service.dart';
 import 'package:expense_tracker/domain/usecases/export_month_usecase.dart';
 import 'package:expense_tracker/domain/usecases/export_pdf_usecase.dart';
+import 'package:expense_tracker/domain/usecases/import_month_usecase.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
 
 /// Plain (non-code-generated) providers so adding this feature does not require
@@ -28,4 +30,14 @@ final exportMonthUseCaseProvider = Provider<ExportMonthUseCase>(
 /// nothing: it is a local file handed to the share sheet.
 final exportPdfUseCaseProvider = Provider<ExportPdfUseCase>(
   (Ref ref) => ExportPdfUseCase(ref.watch(transactionRepositoryProvider)),
+);
+
+/// Reads a backup file the user picks through Android's file chooser.
+final filePickerServiceProvider = Provider<FilePickerService>(
+  (Ref ref) => FilePickerService(),
+);
+
+/// Reads a backup — from a file or from Drive — and writes its rows.
+final importMonthUseCaseProvider = Provider<ImportMonthUseCase>(
+  (Ref ref) => ImportMonthUseCase(ref.watch(transactionRepositoryProvider)),
 );

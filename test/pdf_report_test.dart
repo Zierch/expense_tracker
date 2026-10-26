@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:expense_tracker/data/services/pdf_report_builder.dart';
+import 'package:expense_tracker/domain/entities/import_transaction.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:expense_tracker/domain/usecases/export_pdf_usecase.dart';
@@ -220,6 +221,12 @@ class _FakeRepository implements TransactionRepository {
     DateTime? end,
   }) async =>
       _byCategory(_inRange(start, end), 'income');
+
+  // A write path these tests do not walk: they read totals and rows.
+  @override
+  Future<ImportWriteResult> importTransactions(
+          List<ImportTransaction> transactions) async =>
+      const ImportWriteResult(imported: 0, duplicates: 0);
 
   @override
   Future<Map<String, double>> getExpenseByCategory({
