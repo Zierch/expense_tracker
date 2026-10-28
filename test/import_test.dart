@@ -19,7 +19,7 @@
 
 import 'dart:convert';
 
-import 'package:drift/drift.dart' show QueryExecutor, Value;
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
