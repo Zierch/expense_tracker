@@ -223,6 +223,12 @@ jobs:
           version_code="$(sed -n 's/^version: .*+//p' pubspec.yaml)"
           notes="$(mktemp)"
           cp "docs/releases/v$VERSION.md" "$notes"
+          # The block below opens with a blank line, which is only a paragraph
+          # break if the notes file ends with a newline. A notes file that does not
+          # — most of them, since an editor is free to leave it off — would glue
+          # "Build details" onto its last paragraph. Normalised here so the two
+          # cannot depend on each other.
+          [ -z "$(tail -c 1 "$notes")" ] || printf '\n' >> "$notes"
           cat >> "$notes" <<EOF
 
           **Build details**
