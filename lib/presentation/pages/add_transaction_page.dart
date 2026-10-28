@@ -52,24 +52,35 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   @override
   void initState() {
     super.initState();
-    _loadCategories();
+    // One loader, not two. An edit has to know which type its row is before it
+    // asks for categories, and asking first with the default type raced the row's
+    // own load; `_loadTransaction` asks once the type is known.
     if (widget.transactionId != null) {
       _loadTransaction();
+    } else {
+      _loadCategories();
     }
   }
 
   Future<void> _loadCategories() async {
     final db = ref.read(databaseProvider);
     final categories = await db.getCategories(type: _type);
+    // The read can outlive the page: popping straight back out of an edit unmounts
+    // this before the rows arrive, and the loads now chain, which lengthens that
+    // window rather than closing it.
+    if (!mounted) return;
     setState(() {
       _categories = categories;
-      // Reset subcategory when categories change
-      _selectedSubcategoryId = null;
       // Auto-select first category if none selected or current not in list
       if (_categories.isNotEmpty) {
         if (_selectedCategoryId == null ||
             !_categories.any((c) => c.id == _selectedCategoryId)) {
           _selectedCategoryId = _categories.first.id;
+          // The subcategory belonged to the category being replaced, so it is
+          // either gone with it or belongs to another category. Only when the
+          // category actually changes, though: clearing it on every load is what
+          // used to wipe the subcategory an edit had just restored.
+          _selectedSubcategoryId = null;
         }
       }
     });
@@ -82,6 +93,7 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
     if (_selectedCategoryId == null) return;
     final db = ref.read(databaseProvider);
     final subcategories = await db.getSubcategories(_selectedCategoryId!);
+    if (!mounted) return;
     setState(() {
       _subcategories = subcategories;
       // Reset subcategory selection if current value not in new list
@@ -107,7 +119,8 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
       _date = _dateOnly(transaction.date);
       _createdAt = transaction.createdAt;
     });
-    _loadCategories();
+    // After the row, so the categories are the ones its subcategory belongs to.
+    await _loadCategories();
   }
 
   @override

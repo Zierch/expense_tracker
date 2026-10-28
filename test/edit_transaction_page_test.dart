@@ -212,4 +212,129 @@ void main() {
       expect(repository.updated, isNull);
     },
   );
+
+  /// A saved expense that already has a subcategory, and a second one to switch to.
+  ///
+  /// Both tests below start here, because the bug was about what the form does with a
+  /// subcategory that is already stored: a fixture without one could not see it.
+  /// `current` is the seeded `Food`, `other` a new `Taxi`.
+  Future<({int transaction, int current, int other})> seedSubcategories(
+    AppDatabase db, {
+    String type = 'expense',
+  }) async {
+    final int categoryId = (await db.getCategories(type: type)).first.id;
+    // Seeded on the `current` side, made here on the `other` side: the two types keep
+    // their subcategories apart, so the names say which list a value came from.
+    final String currentName = type == 'income' ? 'Salary' : 'Food';
+    final String otherName = type == 'income' ? 'Refund' : 'Taxi';
+    final int current = (await db.getSubcategories(categoryId))
+        .firstWhere((Subcategory s) => s.name == currentName)
+        .id;
+    final int other = await db.into(db.subcategories).insert(
+          SubcategoriesCompanion.insert(categoryId: categoryId, name: otherName),
+        );
+
+    final int transaction = await db.insertTransaction(
+      TransactionsCompanion.insert(
+        type: type,
+        amount: 15000,
+        categoryId: categoryId,
+        subcategoryId: Value(current),
+        date: DateTime(2026, 10, 20),
+      ),
+    );
+
+    return (transaction: transaction, current: current, other: other);
+  }
+
+  /// The subcategory column of [transactionId], as the database now holds it.
+  Future<int?> storedSubcategory(AppDatabase db, int transactionId) async {
+    final Transaction row = await (db.select(db.transactions)
+          ..where((t) => t.id.equals(transactionId)))
+        .getSingle();
+    return row.subcategoryId;
+  }
+
+  // The form used to open on "None" and then write that back. The subcategory was
+  // cleared while the categories loaded, so an Update nobody meant as a change lost a
+  // value the row already had — the worse half of the bug, because nothing on screen
+  // said so once the dropdown had fallen back to None.
+  sqliteWidgetTest('an edit opens on the stored subcategory and saves it again',
+      (AppDatabase db, WidgetTester tester) async {
+    useTallWindow(tester);
+    final ({int transaction, int current, int other}) row =
+        await seedSubcategories(db);
+
+    await pumpEditPage(
+        tester, db, row.transaction, _Recorder(TransactionRepositoryImpl(db)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Food'), findsOneWidget,
+        reason: 'the form has to open on the subcategory the row already has');
+
+    await tester.tap(find.text('Update'));
+    await tester.pumpAndSettle();
+
+    expect(await storedSubcategory(db, row.transaction), row.current,
+        reason: 'saving without touching the dropdown must not clear it');
+
+    // Unmounted before the database closes: a live page outlives the harness.
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  // The other branch of the same load. The page starts on the expense type and only
+  // learns the row's type from the row, so an income edit is the case where the two
+  // loads disagree — which is how a form could list one type's subcategories while
+  // holding the other type's selection.
+  sqliteWidgetTest('an edit of an income transaction opens on its own subcategory',
+      (AppDatabase db, WidgetTester tester) async {
+    useTallWindow(tester);
+    final ({int transaction, int current, int other}) row =
+        await seedSubcategories(db, type: 'income');
+
+    await pumpEditPage(
+        tester, db, row.transaction, _Recorder(TransactionRepositoryImpl(db)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Salary'), findsOneWidget,
+        reason: "the row's own type decides which subcategories the form shows");
+    expect(find.text('Food'), findsNothing,
+        reason: 'an expense subcategory does not belong on an income row');
+
+    await tester.tap(find.text('Update'));
+    await tester.pumpAndSettle();
+
+    expect(await storedSubcategory(db, row.transaction), row.current,
+        reason: 'an income row keeps its own subcategory through a save');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  sqliteWidgetTest('an edit stores the subcategory the user picks',
+      (AppDatabase db, WidgetTester tester) async {
+    useTallWindow(tester);
+    final ({int transaction, int current, int other}) row =
+        await seedSubcategories(db);
+
+    await pumpEditPage(
+        tester, db, row.transaction, _Recorder(TransactionRepositoryImpl(db)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButtonFormField<int?>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Taxi').last);
+    await tester.pumpAndSettle();
+
+    // The field itself has to show the pick, not only the database: a form that
+    // saves a value it does not display is the same bug wearing a different hat.
+    expect(find.text('Taxi'), findsOneWidget);
+
+    await tester.tap(find.text('Update'));
+    await tester.pumpAndSettle();
+
+    expect(await storedSubcategory(db, row.transaction), row.other,
+        reason: 'the picked subcategory is what the Update has to store');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }
