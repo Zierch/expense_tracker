@@ -64,7 +64,9 @@ Requires Android 7.0 or newer (minSdk 24).
 - Amount entry with quick-append buttons for `0` / `00` / `000`
 - Indonesian rupiah (IDR) formatting
 - Optional per-month JSON export to a `Expense Tracker` folder in your own
-  Google Drive; re-exporting a month replaces its file instead of duplicating it
+  Google Drive; re-exporting a month replaces its file instead of duplicating it,
+  and one button backs up every month that has transactions — one file per month,
+  with progress as it goes
 - Import a backup back in — a file you pick from storage, or every month in the
   Drive folder in one go. Transactions already stored are matched on their
   content and skipped, so importing the same file twice adds nothing, and a
@@ -72,6 +74,8 @@ Requires Android 7.0 or newer (minSdk 24).
 - PDF report for any date range, with totals, a breakdown per category and every
   transaction; shared straight to Files or a chat from Android's share sheet, and
   no Google account needed
+- CSV of any date range, for a spreadsheet: saved wherever you choose through
+  Android's own *Save as* dialog, with no permission and no Google account
 - Follows your system light or dark theme, or force light/dark from the theme picker on the dashboard
 - Checks GitHub for a newer release on open (and on demand from Backup), downloads and installs it in place
 - Pull the dashboard down to re-run the queries behind the month on screen
@@ -336,9 +340,13 @@ year-boundary arithmetic), the month boundaries themselves — the in-memory pre
 and the SQL range, run against a real in-memory database — the dashboard's month
 picker (which months it offers, and that a choice comes back as a month anchor), the
 transaction row widget, the dashboard's pull-to-refresh, the balance's hide/show
-toggle, the import of a backup (what it writes, what it refuses, and that a second
-import of the same file writes nothing), and the release-config invariants that keep
-signing, backup rules and the OAuth identity from silently regressing.
+toggle, the import of a backup (what it writes, what it refuses, that a second
+import of the same file writes nothing, and that a failure halfway leaves no half
+month behind), the Google Drive requests a backup and a restore make — built
+against a fake HTTP client, so the query, the paging, the retry and the uploaded
+file are checked without a network or an account — the CSV and the months a batch
+export walks, and the release-config invariants that keep signing, backup rules and
+the OAuth identity from silently regressing.
 
 The database-backed tests need a SQLite library for the *host* to load, which is a
 different build from the one the app ships: Windows uses the `winsqlite3.dll` that

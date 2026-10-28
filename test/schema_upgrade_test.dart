@@ -1,4 +1,5 @@
-// Schema 5 drops the budget and recurring-templates tables.
+// Schema 5 drops the budget and recurring-templates tables; schema 6 adds the
+// index every date-range query reads through.
 //
 // Those two features were withdrawn, and the tables go with them — but a phone
 // that opened v1.7.0 recorded version 4, so the only safe way out is forward:
@@ -10,6 +11,9 @@
 //    a generated row was an ordinary transaction, not a reference.
 //  * The install can come from version 2 or 3 as well, where one or both of the
 //    tables were never created, so the drop has to tolerate a missing table.
+//  * Schema 6 adds `transactions_date`, on both paths: a fresh install and an
+//    upgrade. An index that exists only for new installs would leave the oldest
+//    and slowest databases — the ones with the most rows to scan — without it.
 
 import 'dart:io';
 
@@ -23,6 +27,13 @@ import 'sqlite_support.dart';
 Future<Set<String>> _tables(AppDatabase db) async {
   final List<QueryRow> rows = await db
       .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .get();
+  return rows.map((QueryRow row) => row.read<String>('name')).toSet();
+}
+
+Future<Set<String>> _indexes(AppDatabase db) async {
+  final List<QueryRow> rows = await db
+      .customSelect("SELECT name FROM sqlite_master WHERE type = 'index'")
       .get();
   return rows.map((QueryRow row) => row.read<String>('name')).toSet();
 }
@@ -42,8 +53,10 @@ Future<int> _insertExpense(AppDatabase db, double amount) async {
 }
 
 void main() {
-  test('a v4 install loses the two tables and keeps its transactions', () async {
-    final Directory dir = Directory.systemTemp.createTempSync('expense_tracker_from_v4');
+  test('a v4 install loses the two tables and keeps its transactions',
+      () async {
+    final Directory dir =
+        Directory.systemTemp.createTempSync('expense_tracker_from_v4');
     final String path = p.join(dir.path, 'app.sqlite');
 
     final AppDatabase? before = openSqliteFileOrSkip(path);
@@ -57,11 +70,13 @@ void main() {
     await before.customStatement(
       'CREATE TABLE budgets (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, type TEXT, amount REAL)',
     );
-    await before.customStatement("INSERT INTO budgets (name, type, amount) VALUES ('Food', 'expense', 1000000)");
+    await before.customStatement(
+        "INSERT INTO budgets (name, type, amount) VALUES ('Food', 'expense', 1000000)");
     await before.customStatement(
       'CREATE TABLE recurring_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT)',
     );
-    await before.customStatement("INSERT INTO recurring_templates (type) VALUES ('expense')");
+    await before.customStatement(
+        "INSERT INTO recurring_templates (type) VALUES ('expense')");
     await before.customStatement('PRAGMA user_version = 4');
     await before.close();
 
@@ -79,15 +94,17 @@ void main() {
       // upgrade starts from the right place.
       final QueryRow version =
           await after.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 5);
+      expect(version.read<int>('user_version'), 6);
     } finally {
       await after.close();
       dir.deleteSync(recursive: true);
     }
   });
 
-  test('a v3 install, which had budgets and no templates, upgrades too', () async {
-    final Directory dir = Directory.systemTemp.createTempSync('expense_tracker_from_v3');
+  test('a v3 install, which had budgets and no templates, upgrades too',
+      () async {
+    final Directory dir =
+        Directory.systemTemp.createTempSync('expense_tracker_from_v3');
     final String path = p.join(dir.path, 'app.sqlite');
 
     final AppDatabase? before = openSqliteFileOrSkip(path);
@@ -103,7 +120,8 @@ void main() {
     final AppDatabase? after = openSqliteFileOrSkip(path);
     if (after == null) return;
     try {
-      expect((await after.getAllTransactions()).map((Transaction t) => t.id), <int>[rowId]);
+      expect((await after.getAllTransactions()).map((Transaction t) => t.id),
+          <int>[rowId]);
       // The table that was there is dropped; the one that never existed is
       // skipped rather than being an error.
       expect(await _tables(after), isNot(contains('budgets')));
@@ -114,8 +132,10 @@ void main() {
     }
   });
 
-  test('a v2 install, which never had either table, upgrades without complaint', () async {
-    final Directory dir = Directory.systemTemp.createTempSync('expense_tracker_from_v2');
+  test('a v2 install, which never had either table, upgrades without complaint',
+      () async {
+    final Directory dir =
+        Directory.systemTemp.createTempSync('expense_tracker_from_v2');
     final String path = p.join(dir.path, 'app.sqlite');
 
     final AppDatabase? before = openSqliteFileOrSkip(path);
@@ -128,12 +148,57 @@ void main() {
     final AppDatabase? after = openSqliteFileOrSkip(path);
     if (after == null) return;
     try {
-      expect((await after.getAllTransactions()).map((Transaction t) => t.id), <int>[rowId]);
+      expect((await after.getAllTransactions()).map((Transaction t) => t.id),
+          <int>[rowId]);
       expect(await _tables(after), isNot(contains('budgets')));
       expect(await _tables(after), isNot(contains('recurring_templates')));
     } finally {
       await after.close();
       dir.deleteSync(recursive: true);
     }
+  });
+
+  test('a v5 install gains the date index and keeps its transactions',
+      () async {
+    final Directory dir =
+        Directory.systemTemp.createTempSync('expense_tracker_from_v5');
+    final String path = p.join(dir.path, 'app.sqlite');
+
+    final AppDatabase? before = openSqliteFileOrSkip(path);
+    if (before == null) return;
+
+    final int rowId = await _insertExpense(before, 250000);
+    // What v1.8.0 left behind: the same tables, with no index, recorded as 5.
+    await before.customStatement('DROP INDEX IF EXISTS transactions_date');
+    await before.customStatement('PRAGMA user_version = 5');
+    await before.close();
+
+    final AppDatabase? after = openSqliteFileOrSkip(path);
+    if (after == null) return;
+    try {
+      expect(await _indexes(after), contains('transactions_date'));
+      expect((await after.getAllTransactions()).map((Transaction t) => t.id),
+          <int>[rowId]);
+    } finally {
+      await after.close();
+      dir.deleteSync(recursive: true);
+    }
+  });
+
+  sqliteTest('a fresh install is born with the date index',
+      (AppDatabase db) async {
+    expect(await _indexes(db), contains('transactions_date'));
+
+    // And the day-range duplicate check an import runs still answers with it in
+    // place, which is the query the index exists for.
+    expect(
+      await db.hasMatchingTransaction(
+        date: DateTime(2026, 10, 4),
+        type: 'expense',
+        amount: 250000,
+        categoryId: (await db.getCategories(type: 'expense')).first.id,
+      ),
+      isFalse,
+    );
   });
 }

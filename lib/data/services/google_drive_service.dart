@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
@@ -57,7 +58,35 @@ class DriveBackupFile {
 /// as long as the app process, so there is no leak to plug — disposing it would
 /// merely stop auth updates from reaching the UI.
 class GoogleDriveService {
-  GoogleDriveService._();
+  GoogleDriveService._()
+      : _http = http.Client(),
+        _headers = null;
+
+  /// The same service with the network and the Google hand-off replaced.
+  ///
+  /// Tests need to see the requests this class builds — the Drive query, the
+  /// paging, the retry — and none of that is reachable while every call creates
+  /// its own socket and asks a real Google account for a token. Injecting the
+  /// client and the headers puts the request shape under test without a network
+  /// and without a signed-in account.
+  @visibleForTesting
+  GoogleDriveService.forTesting({
+    required http.Client client,
+    required Future<Map<String, String>> Function() headers,
+  })  : _http = client,
+        _headers = headers;
+
+  /// The one HTTP client this service uses.
+  ///
+  /// One rather than one per call: it lives as long as the process, which is
+  /// exactly as long as this singleton, so its connections are reused rather than
+  /// renegotiated for every month of a batch export. Closing it is therefore
+  /// nobody's job — a closed client is what a *stopped* response stream needs
+  /// instead, and the download cancels its subscription for that.
+  final http.Client _http;
+
+  /// The authorization headers, when a test has replaced Google with its own.
+  final Future<Map<String, String>> Function()? _headers;
 
   static final GoogleDriveService instance = GoogleDriveService._();
 
@@ -266,15 +295,13 @@ class GoogleDriveService {
     required Map<String, dynamic> data,
     String? folderName,
   }) async {
-    await initialize();
     final String folder = folderName ?? GoogleConfig.driveFolderName;
-    await _ensureDriveAccess();
 
     final Uint8List bytes = Uint8List.fromList(
       utf8.encode(const JsonEncoder.withIndent('  ').convert(data)),
     );
 
-    Map<String, String> headers = await _authorizationHeaders();
+    Map<String, String> headers = await _prepareHeaders();
     final String folderId = await _findOrCreateFolder(headers, folder);
     final String? existingId = await _findFileId(headers, folderId, fileName);
 
@@ -285,7 +312,7 @@ class GoogleDriveService {
     if (response.statusCode == 401) {
       // The cached access token expired. A genuine scope *denial* is already
       // rejected earlier by _ensureDriveAccess, so refreshing is the right move.
-      headers = await _authorizationHeaders();
+      headers = await _refreshedHeaders();
       response = existingId == null
           ? await _createFile(headers, folderId, fileName, bytes)
           : await _replaceFileContent(headers, existingId, bytes);
@@ -326,11 +353,9 @@ class GoogleDriveService {
   /// should be answered with "there is nothing here", not with an empty folder
   /// made behind the user's back.
   Future<List<DriveBackupFile>> listBackupFiles({String? folderName}) async {
-    await initialize();
     final String folder = folderName ?? GoogleConfig.driveFolderName;
-    await _ensureDriveAccess();
 
-    final Map<String, String> headers = await _authorizationHeaders();
+    final Map<String, String> headers = await _prepareHeaders();
     final String? folderId = await _findFolderId(headers, folder);
     if (folderId == null) return <DriveBackupFile>[];
 
@@ -361,9 +386,6 @@ class GoogleDriveService {
   ///
   /// `alt=media` is what returns the file's bytes rather than its metadata.
   Future<String> downloadJson(String fileId) async {
-    await initialize();
-    await _ensureDriveAccess();
-
     final Uri uri =
         Uri.parse('$_driveApi/files/${Uri.encodeComponent(fileId)}?alt=media');
     return utf8.decode(await _downloadBytes(uri));
@@ -375,60 +397,63 @@ class GoogleDriveService {
   /// server sends before the caller can look at it: the cap has to be applied
   /// while the bytes arrive, or a file far larger than a month of transactions is
   /// already in memory by the time it is refused.
-  ///
-  /// The client is created and closed here because the response stream outlives
-  /// the request that started it — closing the client is what cancels a body
-  /// that is no longer wanted, on the error paths as much as on the happy one.
   Future<Uint8List> _downloadBytes(Uri uri) async {
-    final http.Client client = http.Client();
-    try {
-      Map<String, String> headers = await _authorizationHeaders();
-      http.StreamedResponse response =
-          await _sendStreamed(client, uri, headers);
+    Map<String, String> headers = await _prepareHeaders();
+    http.StreamedResponse response = await _sendStreamed(uri, headers);
 
+    if (response.statusCode == 401) {
+      // Same as the upload path: an expired access token is refreshed once,
+      // and a genuine scope denial never reaches here — `_ensureDriveAccess`
+      // rejects that earlier.
+      await _discard(response);
+      headers = await _refreshedHeaders();
+      response = await _sendStreamed(uri, headers);
       if (response.statusCode == 401) {
-        // Same as the upload path: an expired access token is refreshed once,
-        // and a genuine scope denial never reaches here — `_ensureDriveAccess`
-        // rejects that earlier.
-        headers = await _authorizationHeaders();
-        response = await _sendStreamed(client, uri, headers);
-        if (response.statusCode == 401) {
-          throw BackupException(
-            'Google Drive access is no longer valid. Sign out and sign in again '
-            'to grant it afresh.',
-          );
-        }
-      }
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        final String body = await response.stream.bytesToString();
         throw BackupException(
-          'Could not read that backup from Google Drive '
-          '(HTTP ${response.statusCode}).\n'
-          '${_extractErrorMessage(body)}',
+          'Google Drive access is no longer valid. Sign out and sign in again '
+          'to grant it afresh.',
         );
       }
+    }
 
-      // What the server declares, when it declares anything: refusing here saves
-      // reading a single byte of a file that is already too big.
-      final int? declared = response.contentLength;
-      if (declared != null && declared > _maxBackupBytes) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final String body = await response.stream.bytesToString();
+      throw BackupException(
+        'Could not read that backup from Google Drive '
+        '(HTTP ${response.statusCode}).\n'
+        '${_extractErrorMessage(body)}',
+      );
+    }
+
+    // What the server declares, when it declares anything: refusing here saves
+    // reading a single byte of a file that is already too big.
+    final int? declared = response.contentLength;
+    if (declared != null && declared > _maxBackupBytes) {
+      await _discard(response);
+      throw _tooLargeToBeABackup();
+    }
+
+    final BytesBuilder collected = BytesBuilder(copy: false);
+    await for (final List<int> chunk in response.stream) {
+      collected.add(chunk);
+      if (collected.length > _maxBackupBytes) {
+        // Leaving an `await for` — by `throw`, `return` or `break` — cancels its
+        // subscription, which is what stops the download. A body nobody reads
+        // would otherwise keep the connection open until the server gave up.
         throw _tooLargeToBeABackup();
       }
-
-      final BytesBuilder collected = BytesBuilder(copy: false);
-      await for (final List<int> chunk in response.stream) {
-        collected.add(chunk);
-        if (collected.length > _maxBackupBytes) {
-          throw _tooLargeToBeABackup();
-        }
-      }
-
-      return collected.takeBytes();
-    } finally {
-      client.close();
     }
+
+    return collected.takeBytes();
   }
+
+  /// Throws away a body this call is not going to read.
+  ///
+  /// The client is shared and lives as long as the app, so a response nobody
+  /// consumes holds its connection until the server gives up. Cancelling the
+  /// subscription is what closes it.
+  Future<void> _discard(http.StreamedResponse response) =>
+      response.stream.listen(null).cancel();
 
   BackupException _tooLargeToBeABackup() => BackupException(
         'That backup is larger than ${_maxBackupBytes ~/ (1024 * 1024)} MB, so '
@@ -436,12 +461,11 @@ class GoogleDriveService {
       );
 
   Future<http.StreamedResponse> _sendStreamed(
-    http.Client client,
     Uri uri,
     Map<String, String> headers,
   ) async {
     try {
-      return await client
+      return await _http
           .send(http.Request('GET', uri)..headers.addAll(headers))
           .timeout(_requestTimeout);
     } on TimeoutException {
@@ -449,6 +473,33 @@ class GoogleDriveService {
         'The connection to Google Drive timed out. Check your connection and try again.',
       );
     }
+  }
+
+  /// Authorization for one Drive call, after making sure the scope is granted.
+  ///
+  /// A test replaces the whole Google hand-off — the SDK, the account, the
+  /// consent — with the headers it wants, which is the only way to reach the
+  /// request this class builds without a real account.
+  Future<Map<String, String>> _prepareHeaders() async {
+    final Future<Map<String, String>> Function()? injected = _headers;
+    if (injected != null) return injected();
+
+    await initialize();
+    await _ensureDriveAccess();
+    return _authorizationHeaders();
+  }
+
+  /// Fresh authorization headers for a retry after a `401`.
+  ///
+  /// Only the token, not the whole access check: the scope was already granted
+  /// before the first attempt, and asking for consent in the middle of an export
+  /// would put a Google screen on top of a progress bar. What a `401` means here
+  /// is that the cached token aged out, nothing more.
+  Future<Map<String, String>> _refreshedHeaders() async {
+    final Future<Map<String, String>> Function()? injected = _headers;
+    if (injected != null) return injected();
+
+    return _authorizationHeaders();
   }
 
   /// Makes sure the Drive scope is granted, requesting consent if needed.
@@ -498,7 +549,7 @@ class GoogleDriveService {
     if (existing != null) return existing;
 
     final http.Response response = await _send(
-      http.post(
+      _http.post(
         Uri.parse('$_driveApi/files?fields=id,name'),
         headers: <String, String>{
           ...headers,
@@ -577,7 +628,7 @@ class GoogleDriveService {
       );
 
       final http.Response response =
-          await _send(http.get(uri, headers: headers));
+          await _send(_http.get(uri, headers: headers));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw BackupException(
@@ -639,7 +690,7 @@ class GoogleDriveService {
       ..add(utf8.encode('\r\n--$boundary--'));
 
     return _send(
-      http.post(
+      _http.post(
         Uri.parse(
           '$_uploadApi/files?uploadType=multipart&fields=id,name,webViewLink',
         ),
@@ -659,7 +710,7 @@ class GoogleDriveService {
     Uint8List bytes,
   ) {
     return _send(
-      http.patch(
+      _http.patch(
         Uri.parse(
           '$_uploadApi/files/${Uri.encodeComponent(fileId)}'
           '?uploadType=media&fields=id,name,webViewLink',

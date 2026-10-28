@@ -33,6 +33,15 @@ class ExportMonthUseCase {
   static final DateFormat _monthLabel = DateFormat('MMMM yyyy');
   static final DateFormat _timestamp = DateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
+  /// Every month this database has a transaction in, oldest first.
+  ///
+  /// What "export everything" means: the months that hold something, not every
+  /// month since the first one. The caller walks the list one month at a time so
+  /// that it can say how far along it is, which is why this returns months rather
+  /// than the exports themselves.
+  Future<List<DateTime>> monthsWithTransactions() =>
+      _repository.getMonthsWithTransactions();
+
   Future<MonthExport> call(DateTime month) async {
     // MonthRange owns the boundary reasoning, and the same range feeds the home
     // and statistics screens, so a backup can no longer disagree with the totals
@@ -54,9 +63,10 @@ class ExportMonthUseCase {
     final double totalExpense =
         await _repository.getTotalExpense(start: start, end: end);
 
-    final List<TransactionEntity> ordered = <TransactionEntity>[...transactions]
-      ..sort((TransactionEntity a, TransactionEntity b) =>
-          a.date.compareTo(b.date));
+    final List<TransactionEntity> ordered = <TransactionEntity>[
+      ...transactions
+    ]..sort(
+        (TransactionEntity a, TransactionEntity b) => a.date.compareTo(b.date));
 
     final Map<String, dynamic> json = <String, dynamic>{
       'app': 'Expense Tracker',

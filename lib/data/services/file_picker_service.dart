@@ -2,11 +2,11 @@ import 'package:flutter/services.dart';
 
 import 'google_drive_service.dart' show BackupException;
 
-/// Picks a file through Android's own file chooser and returns its text.
+/// Reads a backup file, and saves a report, through Android's own file dialogs.
 ///
-/// The platform side returns the file's *contents*, never a path: the app has no
-/// business holding a path into somebody's storage, and the content URI Android
-/// hands out is readable only for as long as the chooser's grant lasts.
+/// The platform side returns the chosen file's *contents*, never a path: the app
+/// has no business holding a path into somebody's storage, and the content URI
+/// Android hands out is readable only for as long as the chooser's grant lasts.
 class FilePickerService {
   FilePickerService({MethodChannel? channel})
       : _channel = channel ?? const MethodChannel('app.files');
@@ -23,6 +23,25 @@ class FilePickerService {
       throw BackupException('Choosing a file is not available on this device.');
     } on PlatformException catch (error) {
       throw BackupException(error.message ?? 'Could not read the chosen file.');
+    }
+  }
+
+  /// Writes [text] to a file the user names and places in Android's "Save as"
+  /// dialog. `false` means they backed out, which is not a failure.
+  Future<bool> saveTextFile({
+    required String fileName,
+    required String text,
+  }) async {
+    try {
+      final bool? saved = await _channel.invokeMethod<bool>(
+        'saveTextFile',
+        <String, Object?>{'fileName': fileName, 'text': text},
+      );
+      return saved ?? false;
+    } on MissingPluginException {
+      throw BackupException('Saving a file is not available on this device.');
+    } on PlatformException catch (error) {
+      throw BackupException(error.message ?? 'Could not save the file.');
     }
   }
 }

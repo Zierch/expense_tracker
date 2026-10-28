@@ -16,6 +16,12 @@ abstract class TransactionRepository {
   Future<Map<String, double>> getIncomeByCategory(
       {DateTime? start, DateTime? end});
 
+  /// Every month that holds at least one transaction, oldest first.
+  ///
+  /// The batch export walks these, so it never writes a backup file for a month
+  /// the user never wrote anything in.
+  Future<List<DateTime>> getMonthsWithTransactions();
+
   /// Writes a backup's rows, making the categories they name when this install
   /// does not have them yet.
   ///

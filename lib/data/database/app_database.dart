@@ -47,13 +47,32 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.withExecutor(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
+
+  /// The index behind every range filter in the app.
+  ///
+  /// `date` is the column nearly every query filters on: the dashboard's month,
+  /// both statistics tabs, the JSON export, the PDF and CSV reports, and the
+  /// day-range duplicate check an import runs once per row. Without it each of
+  /// those reads every transaction ever entered — and the import's check reads
+  /// the whole table *per row*, so a restore got slower with every month it had
+  /// already restored.
+  ///
+  /// Written out rather than declared with `@TableIndex` so that the same string
+  /// creates it on a fresh install and on an upgrade, with `IF NOT EXISTS` in
+  /// both paths. `dateIndexName` is what a test looks for in `sqlite_master`.
+  static const String dateIndexName = 'transactions_date';
+  static const String dateIndexSql =
+      'CREATE INDEX IF NOT EXISTS $dateIndexName ON transactions (date)';
 
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
       onCreate: (m) async {
         await m.createAll();
+        // `createAll` builds the tables the table classes declare; the index is
+        // not one of them, so the fresh-install path adds it too.
+        await customStatement(dateIndexSql);
         await _seedData();
       },
       onUpgrade: (m, from, to) async {
@@ -77,6 +96,14 @@ class AppDatabase extends _$AppDatabase {
         if (from < 5) {
           await customStatement('DROP TABLE IF EXISTS budgets');
           await customStatement('DROP TABLE IF EXISTS recurring_templates');
+        }
+        // v6 adds the index every day- and month-range filter reads through.
+        // `IF NOT EXISTS`, so an install that already carries it — this line
+        // runs only for `from < 6`, but a database restored from a backup taken
+        // after the index was made would otherwise fail to open — is not an
+        // error.
+        if (from < 6) {
+          await customStatement(dateIndexSql);
         }
       },
     );
@@ -232,6 +259,32 @@ class AppDatabase extends _$AppDatabase {
     return (select(subcategories)
           ..where((s) => s.categoryId.equals(categoryId)))
         .get();
+  }
+
+  /// Every month that holds at least one transaction, oldest first.
+  ///
+  /// The batch export walks these rather than every calendar month since the
+  /// first transaction: a month the user never wrote anything in has nothing to
+  /// export, and a file for it would only make the Drive folder harder to read.
+  Future<List<DateTime>> getMonthsWithTransactions() async {
+    final List<TypedResult> rows =
+        await (selectOnly(transactions, distinct: true)
+              ..addColumns(<Expression<Object>>[transactions.date]))
+            .get();
+
+    // Keyed as `year * 12 + (month - 1)` so that sorting the keys sorts the
+    // months. `DateTime` itself cannot do that job: December of one year sorts
+    // after January of the next one, and a `Set<DateTime>` would count two days
+    // of the same month as two months, since they are different instants.
+    final Set<int> keys = <int>{};
+    for (final TypedResult row in rows) {
+      final DateTime? date = row.read(transactions.date);
+      if (date != null) keys.add(date.year * 12 + date.month - 1);
+    }
+
+    return (keys.toList()..sort())
+        .map((int key) => DateTime(key ~/ 12, key % 12 + 1))
+        .toList();
   }
 
   // Import queries

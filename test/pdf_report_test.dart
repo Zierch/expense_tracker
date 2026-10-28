@@ -223,6 +223,18 @@ class _FakeRepository implements TransactionRepository {
       _byCategory(_inRange(start, end), 'income');
 
   // A write path these tests do not walk: they read totals and rows.
+  /// The months the fixture rows fall in, oldest first.
+  @override
+  Future<List<DateTime>> getMonthsWithTransactions() async {
+    final Set<int> keys = <int>{
+      for (final TransactionEntity t in transactions)
+        t.date.year * 12 + t.date.month - 1,
+    };
+    return (keys.toList()..sort())
+        .map((int key) => DateTime(key ~/ 12, key % 12 + 1))
+        .toList();
+  }
+
   @override
   Future<ImportWriteResult> importTransactions(
           List<ImportTransaction> transactions) async =>

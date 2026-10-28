@@ -75,6 +75,10 @@ class _Recorder implements TransactionRepository {
           {DateTime? start, DateTime? end}) =>
       _inner.getIncomeByCategory(start: start, end: end);
   @override
+  Future<List<DateTime>> getMonthsWithTransactions() =>
+      _inner.getMonthsWithTransactions();
+
+  @override
   Future<ImportWriteResult> importTransactions(
           List<ImportTransaction> transactions) =>
       _inner.importTransactions(transactions);

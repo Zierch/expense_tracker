@@ -9,6 +9,7 @@ import 'package:printing/printing.dart';
 import 'package:expense_tracker/data/services/google_config.dart';
 import 'package:expense_tracker/data/services/google_drive_service.dart';
 import 'package:expense_tracker/data/services/pdf_report_builder.dart';
+import 'package:expense_tracker/domain/usecases/export_csv_usecase.dart';
 import 'package:expense_tracker/domain/usecases/export_month_usecase.dart';
 import 'package:expense_tracker/domain/usecases/export_pdf_usecase.dart';
 import 'package:expense_tracker/domain/usecases/import_month_usecase.dart';
@@ -36,6 +37,13 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   String _errorTitle = 'Export failed';
   String? _hint;
   DriveUploadResult? _result;
+
+  /// Which month of a batch export is being uploaded, for the button's label.
+  String? _progress;
+
+  /// How a finished batch export went. Kept apart from [_result], which answers
+  /// for one month: a count of months is not a [DriveUploadResult].
+  String? _batch;
 
   GoogleDriveService get _service => ref.read(googleDriveServiceProvider);
 
@@ -149,7 +157,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         const SizedBox(height: 12),
         const _ImportCard(signedIn: false),
         const SizedBox(height: 12),
-        const _PdfCard(),
+        const _ReportCard(),
         const SizedBox(height: 12),
         const _UpdateCard(),
         if (_error != null) ...<Widget>[
@@ -268,6 +276,18 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _busy ? null : _handleExportAll,
+                      icon: const Icon(Icons.library_add_check_outlined),
+                      label: Text(_progress ?? 'Export every month to Drive'),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -275,12 +295,21 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         const SizedBox(height: 12),
         const _ImportCard(signedIn: true),
         const SizedBox(height: 12),
-        const _PdfCard(),
+        const _ReportCard(),
         const SizedBox(height: 12),
         const _UpdateCard(),
         if (_result != null) ...<Widget>[
           const SizedBox(height: 12),
           _buildResult(_result!),
+        ],
+        if (_batch != null) ...<Widget>[
+          const SizedBox(height: 12),
+          _buildNotice(
+            icon: Icons.check_circle_outline,
+            title: 'Backup complete',
+            message: _batch!,
+            tone: theme.colorScheme.primary,
+          ),
         ],
         if (_hint != null) ...<Widget>[
           const SizedBox(height: 12),
@@ -544,6 +573,72 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     });
   }
 
+  /// Uploads every month that holds a transaction, one file per month.
+  ///
+  /// One month at a time rather than all at once: the button says which month it
+  /// is on, and a failure names how far it got. Each month is its own file with
+  /// its own name, so running this again replaces the months it already wrote
+  /// instead of duplicating them — a retry after a failure costs only time.
+  Future<void> _handleExportAll() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+      _errorTitle = 'Backup failed';
+      _hint = null;
+      _result = null;
+      _batch = null;
+      _progress = null;
+    });
+
+    int uploaded = 0;
+    int months = 0;
+    try {
+      final ExportMonthUseCase export = ref.read(exportMonthUseCaseProvider);
+      final List<DateTime> all = await export.monthsWithTransactions();
+      months = all.length;
+
+      if (months == 0) {
+        if (mounted) {
+          setState(() => _hint = 'There are no transactions in any month yet, '
+              'so there is nothing to back up.');
+        }
+        return;
+      }
+
+      for (final DateTime month in all) {
+        if (!mounted) return;
+        setState(() => _progress = 'Exporting ${uploaded + 1} of $months...');
+
+        final MonthExport monthExport = await export.call(month);
+        await _service.uploadJson(
+          fileName: monthExport.fileName,
+          data: monthExport.json,
+        );
+        uploaded++;
+      }
+
+      if (mounted) {
+        setState(() => _batch = 'Uploaded $uploaded '
+            '${uploaded == 1 ? 'month' : 'months'} to '
+            '"${GoogleConfig.driveFolderName}", one file per month.');
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() => _error = uploaded == 0
+            ? _describeError(error)
+            : '${_describeError(error)}\n'
+                '$uploaded of $months months were uploaded before it stopped.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _progress = null;
+        });
+      }
+    }
+  }
+
   /// Runs [action] with the busy flag and error banner wired up.
   ///
   /// [errorTitle] names the operation in the failure banner, so a user reading
@@ -558,6 +653,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       _errorTitle = errorTitle;
       _hint = null;
       _result = null;
+      _batch = null;
+      _progress = null;
     });
 
     try {
@@ -595,19 +692,21 @@ class _ButtonSpinner extends StatelessWidget {
   }
 }
 
-/// The PDF report: totals, categories and every transaction of any date range,
-/// drawn locally and handed to Android's share sheet.
+/// A report of any date range, in either of two shapes: a PDF of totals,
+/// categories and every transaction, drawn locally and handed to Android's share
+/// sheet, or the same rows as a CSV file saved where the user chooses.
 ///
-/// No sign-in and no storage permission: the file leaves through whichever app
-/// the user picks, and the app itself keeps nothing.
-class _PdfCard extends ConsumerStatefulWidget {
-  const _PdfCard();
+/// No sign-in either way. The PDF needs no storage permission because it leaves
+/// through whichever app the user picks; the CSV goes through Android's own
+/// "Save as" dialog, which needs no permission for the same reason.
+class _ReportCard extends ConsumerStatefulWidget {
+  const _ReportCard();
 
   @override
-  ConsumerState<_PdfCard> createState() => _PdfCardState();
+  ConsumerState<_ReportCard> createState() => _ReportCardState();
 }
 
-class _PdfCardState extends ConsumerState<_PdfCard> {
+class _ReportCardState extends ConsumerState<_ReportCard> {
   static final DateFormat _day = DateFormat('d MMM yyyy');
 
   late DateTimeRange _range = _thisMonth();
@@ -636,12 +735,12 @@ class _PdfCardState extends ConsumerState<_PdfCard> {
           children: <Widget>[
             Row(
               children: <Widget>[
-                Icon(Icons.picture_as_pdf_outlined,
+                Icon(Icons.summarize_outlined,
                     color: theme.colorScheme.primary),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'PDF report',
+                    'Report',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -651,9 +750,9 @@ class _PdfCardState extends ConsumerState<_PdfCard> {
             ),
             const SizedBox(height: 8),
             Text(
-              'A PDF of any date range: totals, a breakdown per category, and '
-              'every transaction. Works offline and needs no Google account — '
-              'you choose where the file goes from the share sheet.',
+              'Any date range, as a PDF with totals and a breakdown per '
+              'category, or as a CSV of the transactions for a spreadsheet. '
+              'Both work offline and need no Google account.',
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: 12),
@@ -671,6 +770,15 @@ class _PdfCardState extends ConsumerState<_PdfCard> {
                     ? const _ButtonSpinner()
                     : const Icon(Icons.ios_share),
                 label: Text(_busy ? 'Preparing…' : 'Export PDF'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _busy ? null : _saveCsv,
+                icon: const Icon(Icons.table_chart_outlined),
+                label: const Text('Save CSV'),
               ),
             ),
             if (_hint != null) ...<Widget>[
@@ -698,7 +806,7 @@ class _PdfCardState extends ConsumerState<_PdfCard> {
       firstDate: DateTime(2000),
       lastDate: today,
       initialDateRange: _range,
-      helpText: 'PDF report range',
+      helpText: 'Report range',
     );
 
     if (picked == null || !mounted) return;
@@ -707,6 +815,54 @@ class _PdfCardState extends ConsumerState<_PdfCard> {
       _error = null;
       _hint = null;
     });
+  }
+
+  /// The same range as the CSV, saved through Android's "Save as" dialog.
+  ///
+  /// Separate from [_export] rather than a format switch: the two files leave the
+  /// app in different ways (share sheet, storage), and a failure has to name the
+  /// one that failed.
+  Future<void> _saveCsv() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+      _hint = null;
+    });
+
+    try {
+      final CsvExport report = await ref
+          .read(exportCsvUseCaseProvider)
+          .call(from: _range.start, to: _range.end);
+
+      if (report.transactionCount == 0) {
+        if (mounted) {
+          setState(() => _hint =
+              'There are no transactions between $_rangeLabel, so there is '
+                  'nothing to export yet.');
+        }
+        return;
+      }
+
+      final bool saved = await ref
+          .read(filePickerServiceProvider)
+          .saveTextFile(fileName: report.fileName, text: report.text);
+
+      if (!mounted) return;
+      // Backing out of the dialog is not a failure, and there is nothing to
+      // report: a "cancelled" notice would only be noise.
+      if (!saved) return;
+      setState(() => _hint = 'Saved ${report.fileName} with '
+          '${report.transactionCount} '
+          '${report.transactionCount == 1 ? 'transaction' : 'transactions'}.');
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() => _error = 'Could not save the CSV: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
   }
 
   Future<void> _export() async {

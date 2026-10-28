@@ -83,6 +83,11 @@ class TransactionRepositoryImpl implements TransactionRepository {
   }
 
   @override
+  Future<List<DateTime>> getMonthsWithTransactions() {
+    return _database.getMonthsWithTransactions();
+  }
+
+  @override
   Future<ImportWriteResult> importTransactions(
       List<ImportTransaction> transactions) {
     return _database.transaction(() async {

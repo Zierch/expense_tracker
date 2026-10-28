@@ -22,12 +22,17 @@ import 'dart:io';
 /// rethrown, so a broken database cannot turn into a quiet skip.
 const String _missingLibraryMarker = 'Failed to load dynamic library';
 
-/// The real schema on an in-memory database, or `null` after marking the test skipped.
+/// The real schema on an in-memory database built by [build], or `null` after
+/// marking the test skipped.
 ///
 /// `return null` means the caller must stop; the skip has already been recorded.
-AppDatabase? _openOrSkip() {
+///
+/// [build] is what lets a test hand in a subclass — one that fails on purpose, to
+/// check what a half-finished write leaves behind — while still getting the skip
+/// when this host has no SQLite to load.
+AppDatabase? openInMemoryOrSkip(AppDatabase Function() build) {
   try {
-    return AppDatabase.withExecutor(NativeDatabase.memory());
+    return build();
   } on ArgumentError catch (error) {
     if (!'${error.message}'.contains(_missingLibraryMarker)) rethrow;
     markTestSkipped('no SQLite for `flutter test` to load on this host '
@@ -42,7 +47,8 @@ void sqliteTest(
   Future<void> Function(AppDatabase db) body,
 ) {
   test(description, () async {
-    final AppDatabase? db = _openOrSkip();
+    final AppDatabase? db = openInMemoryOrSkip(
+        () => AppDatabase.withExecutor(NativeDatabase.memory()));
     if (db == null) return;
 
     try {
@@ -59,7 +65,8 @@ void sqliteWidgetTest(
   Future<void> Function(AppDatabase db, WidgetTester tester) body,
 ) {
   testWidgets(description, (WidgetTester tester) async {
-    final AppDatabase? db = _openOrSkip();
+    final AppDatabase? db = openInMemoryOrSkip(
+        () => AppDatabase.withExecutor(NativeDatabase.memory()));
     if (db == null) return;
 
     try {

@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import 'package:expense_tracker/data/services/file_picker_service.dart';
 import 'package:expense_tracker/data/services/google_drive_service.dart';
+import 'package:expense_tracker/domain/usecases/export_csv_usecase.dart';
 import 'package:expense_tracker/domain/usecases/export_month_usecase.dart';
 import 'package:expense_tracker/domain/usecases/export_pdf_usecase.dart';
 import 'package:expense_tracker/domain/usecases/import_month_usecase.dart';
@@ -30,6 +31,12 @@ final exportMonthUseCaseProvider = Provider<ExportMonthUseCase>(
 /// nothing: it is a local file handed to the share sheet.
 final exportPdfUseCaseProvider = Provider<ExportPdfUseCase>(
   (Ref ref) => ExportPdfUseCase(ref.watch(transactionRepositoryProvider)),
+);
+
+/// The same range as the PDF, as rows a spreadsheet can read: also local, and
+/// also no Google account.
+final exportCsvUseCaseProvider = Provider<ExportCsvUseCase>(
+  (Ref ref) => ExportCsvUseCase(ref.watch(transactionRepositoryProvider)),
 );
 
 /// Reads a backup file the user picks through Android's file chooser.

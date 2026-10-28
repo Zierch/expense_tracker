@@ -19,7 +19,8 @@
 
 import 'dart:convert';
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show QueryExecutor, Value;
+import 'package:drift/native.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
 import 'package:expense_tracker/data/services/file_picker_service.dart';
@@ -80,6 +81,27 @@ Map<String, dynamic> _row({
 
 Future<int> _rowCount(AppDatabase db) async =>
     (await db.select(db.transactions).get()).length;
+
+/// A database that fails on the second row it is asked to store.
+///
+/// Importing has one job that no assertion on the happy path can see: a month
+/// arrives whole or not at all. A failure in the middle is the only way to test
+/// it, and the only honest way to produce one is a real database that really
+/// throws where row two would have gone.
+class _FailingDatabase extends AppDatabase {
+  _FailingDatabase(super.executor) : super.withExecutor();
+
+  int inserts = 0;
+
+  @override
+  Future<int> insertTransaction(TransactionsCompanion transaction) {
+    inserts++;
+    if (inserts == 2) {
+      throw StateError('the disk filled up');
+    }
+    return super.insertTransaction(transaction);
+  }
+}
 
 void main() {
   // The picker test drives a platform channel, which needs the test binding
@@ -144,6 +166,43 @@ void main() {
     expect(second.imported, 0);
     expect(second.duplicates, 2);
     expect(await _rowCount(db), 2);
+  });
+
+  test('a row that fails midway takes the whole month with it, categories too',
+      () async {
+    final AppDatabase? db =
+        openInMemoryOrSkip(() => _FailingDatabase(NativeDatabase.memory()));
+    if (db == null) return;
+
+    try {
+      final ImportMonthUseCase import =
+          ImportMonthUseCase(TransactionRepositoryImpl(db));
+
+      await expectLater(
+        import(_backup(transactions: <Map<String, dynamic>>[
+          _row(subcategory: 'Coffee', note: 'first'),
+          _row(date: '2026-10-05', subcategory: 'Taxi', note: 'second'),
+        ])),
+        throwsA(isA<StateError>()),
+      );
+
+      // Half a month is worse than none: the user cannot tell which half they
+      // have, and importing the same file again would then write the first row
+      // a second time.
+      expect(await _rowCount(db), 0);
+
+      // The categories and subcategories the failed import made go with it. A
+      // stray `Coffee` left behind would be indistinguishable from one the user
+      // added themselves.
+      final int expenseId = (await db.getCategories(type: 'expense')).first.id;
+      final List<String> subcategories = (await db.getSubcategories(expenseId))
+          .map((Subcategory s) => s.name)
+          .toList();
+      expect(subcategories, isNot(contains('Coffee')));
+      expect(subcategories, isNot(contains('Taxi')));
+    } finally {
+      await db.close();
+    }
   });
 
   sqliteTest(
