@@ -17,14 +17,14 @@ carries anybody's real spending.
 
 | Dashboard | Statistics | Add a transaction |
 | --- | --- | --- |
-| <img src="assets/screenshots/dashboard-dark.png" width="300" alt="Dashboard, dark"> | <img src="assets/screenshots/statistics-dark.png" width="300" alt="Statistics, dark"> | <img src="assets/screenshots/add-transaction-empty-dark.png" width="300" alt="Add a transaction, empty"> |
-| <img src="assets/screenshots/dashboard-bottom-dark.png" width="300" alt="End of the dashboard list, dark"> | <img src="assets/screenshots/statistics-breakdown-dark.png" width="300" alt="Expense breakdown, dark"> | <img src="assets/screenshots/add-transaction-filled-dark.png" width="300" alt="Add a transaction, filled in"> |
-| <img src="assets/screenshots/dashboard-light.png" width="300" alt="Dashboard, light"> | <img src="assets/screenshots/dashboard-bottom-light.png" width="300" alt="End of the dashboard list, light"> | <img src="assets/screenshots/backup-dark.png" width="300" alt="Backup and PDF report"> |
+| <img src="assets/screenshots/dashboard-dark.png" width="240" alt="Dashboard, dark"> | <img src="assets/screenshots/statistics-dark.png" width="240" alt="Statistics, dark"> | <img src="assets/screenshots/add-transaction-empty-dark.png" width="240" alt="Add a transaction, empty"> |
+| <img src="assets/screenshots/dashboard-bottom-dark.png" width="240" alt="End of the dashboard list, dark"> | <img src="assets/screenshots/statistics-breakdown-dark.png" width="240" alt="Expense breakdown, dark"> | <img src="assets/screenshots/add-transaction-filled-dark.png" width="240" alt="Add a transaction, filled in"> |
+| <img src="assets/screenshots/dashboard-light.png" width="240" alt="Dashboard, light"> | <img src="assets/screenshots/dashboard-bottom-light.png" width="240" alt="End of the dashboard list, light"> | <img src="assets/screenshots/backup-dark.png" width="240" alt="Backup and PDF report"> |
 
 Recording one transaction — the amount, the quick-append buttons, the
 subcategory, the note, and the dashboard it lands back on:
 
-<img src="assets/screenshots/add-transaction-dark.gif" width="300" alt="Adding a transaction, end to end">
+<img src="assets/screenshots/add-transaction-dark.gif" width="240" alt="Adding a transaction, end to end">
 
 ## Download
 
