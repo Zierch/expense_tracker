@@ -54,11 +54,13 @@ Requires Android 7.0 or newer (minSdk 24).
 
 - Add, edit and delete income and expense transactions
 - Categories and subcategories, kept separate for income and expense
-- Monthly summary: total income, total expense, balance
+- Monthly summary: total income, total expense, and a balance that carries
+  whatever the months before it left over
 - Hide or show the balance with the eye on that card; the choice is remembered
   for the next launch
-- Weekly summary showing one total per week, with daily and weekly breakdowns
-  kept as separate views
+- Weekly summary showing one total per whole Monday–Sunday week, with daily and
+  weekly breakdowns kept as separate views; the week at either edge of the month
+  keeps the days it reaches into the month next door
 - Statistics split into an Expense tab and an Income tab, with a category-by-
   category breakdown and a pie chart for expenses
 - Amount entry with quick-append buttons for `0` / `00` / `000`
@@ -79,8 +81,9 @@ Requires Android 7.0 or newer (minSdk 24).
 - Follows your system light or dark theme, or force light/dark from the theme picker on the dashboard
 - Checks GitHub for a newer release on open (and on demand from Backup), downloads and installs it in place
 - Pull the dashboard down to re-run the queries behind the month on screen
-- The month on the dashboard is named above the card and chosen by tapping that
-  name; the picker offers months only, from January 2020 up to the current one
+- The month on the dashboard and on the statistics page is named on the screen
+  and chosen by tapping that name; the picker offers months only, from January
+  2020 up to the current one
 - Works entirely offline
 
 ## Tech stack

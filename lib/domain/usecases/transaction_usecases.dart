@@ -54,10 +54,17 @@ class GetSummaryUseCase {
     final expense = await _repository.getTotalExpense(start: start, end: end);
     final expenseByCategory = await _repository.getExpenseByCategory(start: start, end: end);
     final incomeByCategory = await _repository.getIncomeByCategory(start: start, end: end);
+    // The balance carries. Whatever was left at the end of the previous month is the
+    // starting point of this one, so it is everything entered up to the end of the
+    // month on screen rather than that month's own income minus its own expense — the
+    // figure that used to restart at zero on the 1st. Income and expense above stay
+    // monthly: they are what the month did, and only the balance is a running total.
+    final double incomeToDate = await _repository.getTotalIncome(end: end);
+    final double expenseToDate = await _repository.getTotalExpense(end: end);
     return SummaryResult(
       totalIncome: income,
       totalExpense: expense,
-      balance: income - expense,
+      balance: incomeToDate - expenseToDate,
       expenseByCategory: expenseByCategory,
       incomeByCategory: incomeByCategory,
     );

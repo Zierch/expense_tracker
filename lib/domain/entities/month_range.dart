@@ -60,6 +60,65 @@ class MonthRange {
     return DateTime(year, month, dayOfMonth);
   }
 
+  /// The whole Monday–Sunday weeks this month touches, first to last.
+  ///
+  /// The weekly section of the statistics page groups by week, and a week is a week:
+  /// the one that holds the 1st starts on the Monday before it, even when that Monday
+  /// is in the previous month, and the one that holds the last day runs to its Sunday
+  /// even when that Sunday is in the next. Clipping at the month edge is what made a
+  /// spend on the 30th of September belong to no week of October at all.
+  ///
+  /// There are four, five or six of them; [contains] still describes the month alone,
+  /// so a caller has to decide which of the two spans it means.
+  List<WeekSpan> get weeks {
+    final DateTime firstMonday = _mondayOf(start);
+    final DateTime lastMonday = _mondayOf(day(dayCount));
+
+    final List<WeekSpan> spans = <WeekSpan>[];
+    for (DateTime monday = firstMonday;
+        !monday.isAfter(lastMonday);
+        monday = DateTime(monday.year, monday.month, monday.day + 7)) {
+      spans.add(WeekSpan._(monday));
+    }
+    return spans;
+  }
+
+  /// Midnight on the Monday of [day]'s week.
+  ///
+  /// `weekday` is 1 for Monday, and the `DateTime` constructor folds a non-positive
+  /// day into the previous month, so this needs no hand-written month stepping.
+  static DateTime _mondayOf(DateTime day) =>
+      DateTime(day.year, day.month, day.day - (day.weekday - 1));
+
   @override
   String toString() => 'MonthRange($year-${month.toString().padLeft(2, '0')})';
+}
+
+/// One Monday-to-Sunday week, as [MonthRange.weeks] hands them out.
+///
+/// The week is whole rather than clipped to the month that asked for it, which is why
+/// the weeks of a month can add up to more than the month's own total: the days either
+/// side belong to the week they were spent in. A spend entered on Saturday the 1st is
+/// part of the week it happened in, not of a seven-day span invented at the boundary.
+class WeekSpan {
+  WeekSpan._(DateTime monday)
+      : start = DateTime(monday.year, monday.month, monday.day),
+        lastDay = DateTime(monday.year, monday.month, monday.day + 6);
+
+  /// Monday, midnight. Inclusive.
+  final DateTime start;
+
+  /// Sunday, midnight — the day the label names.
+  final DateTime lastDay;
+
+  /// Last representable instant of [lastDay]. Inclusive, and floored back to
+  /// 23:59:59 where drift stores it, exactly like [MonthRange.end].
+  DateTime get end =>
+      DateTime(lastDay.year, lastDay.month, lastDay.day, 23, 59, 59, 999, 999);
+
+  /// Whether [date] falls in this week, whatever time of day it carries.
+  bool contains(DateTime date) => !date.isBefore(start) && !date.isAfter(end);
+
+  @override
+  String toString() => 'WeekSpan($start..$lastDay)';
 }

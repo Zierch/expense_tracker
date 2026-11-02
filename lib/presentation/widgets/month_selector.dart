@@ -1,15 +1,16 @@
-// The dashboard's month, named on the screen and changed from there.
+// The month a screen describes, named on the screen and changed from there.
 //
-// The dashboard filters by one month and nothing finer: `MonthRange` reduces it
-// to (year, month) and no consumer ever reads the day. The platform
-// `showDatePicker` is a *date* picker, so it asked for a day whose value went
-// nowhere, from an app-bar icon that changed the screen without saying which
-// month was now on it. This replaces that pair for the dashboard: the month is
-// named above the card, and the picker only offers months.
+// The dashboard and the statistics page filter by one month and nothing finer:
+// `MonthRange` reduces it to (year, month) and no consumer ever reads the day. The
+// platform `showDatePicker` is a *date* picker, so it asked for a day whose value
+// went nowhere, from an app-bar icon that changed the screen without saying which
+// month was now on it. This replaces that pair: the month is named above the
+// content, and the picker only offers months.
 //
-// The statistics page keeps its own month and its own date picker. The two
-// screens are opened one at a time and are not meant to move together, so a
-// shared selection would make opening one silently change the other.
+// The statistics page uses the same widget and the same dialog for the same
+// reason, and it does it with its own state: the two screens are opened one at a
+// time and are not meant to move together, so a shared selection would make
+// opening one silently change the other.
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -18,7 +19,7 @@ import 'package:intl/intl.dart';
 /// this replaced used.
 final DateTime _firstMonth = DateTime(2020);
 
-/// The dashboard's month as a label that opens [showMonthPicker].
+/// A month as a label that opens [showMonthPicker].
 class MonthSelector extends StatelessWidget {
   final DateTime month;
 

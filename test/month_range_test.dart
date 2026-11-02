@@ -361,6 +361,110 @@ void main() {
     });
   });
 
+  group('the weeks a month touches', () {
+    test('October 2026 starts on the Monday before the 1st and ends in November',
+        () {
+      final List<WeekSpan> weeks = _october.weeks;
+
+      expect(_october.start.weekday, DateTime.thursday,
+          reason: 'the fixture month has to start mid-week, or it proves nothing');
+      expect(weeks, hasLength(5));
+      expect(weeks.first.start, DateTime(2026, 9, 28));
+      expect(weeks.first.lastDay, DateTime(2026, 10, 4));
+      expect(weeks.last.start, DateTime(2026, 10, 26));
+      expect(weeks.last.lastDay, DateTime(2026, 11, 1),
+          reason: 'the closing week runs to its own Sunday, not to the 31st');
+    });
+
+    test('a month that starts on Monday brings nothing from the month before', () {
+      // June 2026 begins on a Monday, so its first week is the month's own first week.
+      final MonthRange june = MonthRange.of(DateTime(2026, 6, 10));
+
+      expect(june.start.weekday, DateTime.monday);
+      expect(june.weeks.first.start, june.start);
+      expect(june.weeks.last.lastDay, DateTime(2026, 7, 5));
+    });
+
+    test('a month that starts on Sunday takes the whole week before it', () {
+      // November 2026 begins on a Sunday: its first week is October 26 – November 1.
+      final MonthRange november = MonthRange.of(DateTime(2026, 11, 10));
+
+      expect(november.start.weekday, DateTime.sunday);
+      expect(november.weeks.first.start, DateTime(2026, 10, 26));
+      expect(november.weeks.first.lastDay, DateTime(2026, 11, 1));
+      expect(november.weeks, hasLength(6));
+    });
+
+    test('a 28-day month that starts on Monday fits exactly four weeks', () {
+      // The lower end of "four, five or six": an off-by-one in the last-week test
+      // shows up as a fifth, empty-handed week rather than as a missing day.
+      final MonthRange february = MonthRange.of(DateTime(2027, 2, 10));
+
+      expect(february.start.weekday, DateTime.monday);
+      expect(february.dayCount, 28);
+      expect(february.weeks, hasLength(4));
+      expect(february.weeks.first.start, february.start);
+      expect(february.weeks.last.lastDay, DateTime(2027, 2, 28));
+    });
+
+    test('every day of the month falls in exactly one week', () {
+      for (final DateTime anchor in <DateTime>[
+        DateTime(2026, 1, 15),
+        DateTime(2026, 2, 15),
+        DateTime(2024, 2, 15),
+        DateTime(2026, 6, 15),
+        DateTime(2026, 10, 15),
+        DateTime(2026, 11, 15),
+        DateTime(2026, 12, 15),
+      ]) {
+        final MonthRange range = MonthRange.of(anchor);
+        for (int dayOfMonth = 1; dayOfMonth <= range.dayCount; dayOfMonth++) {
+          final DateTime at = range.day(dayOfMonth);
+          final int hits =
+              range.weeks.where((WeekSpan week) => week.contains(at)).length;
+          expect(hits, 1,
+              reason: '$range day $dayOfMonth must belong to one week, not $hits');
+        }
+      }
+    });
+
+    test('the weeks chain without a gap and are seven days long', () {
+      final List<WeekSpan> weeks = _october.weeks;
+
+      for (int index = 1; index < weeks.length; index++) {
+        expect(weeks[index].start,
+            weeks[index - 1].lastDay.add(const Duration(days: 1)),
+            reason: 'weeks have to meet, or a day belongs to none of them');
+      }
+      for (final WeekSpan week in weeks) {
+        expect(week.lastDay.difference(week.start).inDays, 6);
+      }
+    });
+
+    test('the first week holds the previous month, which the month itself does not',
+        () {
+      // This is the whole point of the change: September 30th is spent money that the
+      // October total must not count, and that the October week must not lose.
+      final DateTime september30 = DateTime(2026, 9, 30, 18, 45);
+
+      expect(_october.contains(september30), isFalse);
+      expect(_october.weeks.first.contains(september30), isTrue);
+      expect(_october.weeks.first.contains(DateTime(2026, 9, 28)), isTrue);
+      expect(_october.weeks.first.contains(DateTime(2026, 10, 4, 23, 59, 59)),
+          isTrue);
+      expect(_october.weeks.first.contains(DateTime(2026, 9, 27, 23, 59, 59)),
+          isFalse);
+    });
+
+    test('a leap February keeps all 29 days inside its weeks', () {
+      final MonthRange february = MonthRange.of(DateTime(2024, 2, 9));
+
+      expect(february.weeks.first.start, DateTime(2024, 1, 29));
+      expect(february.weeks.last.lastDay, DateTime(2024, 3, 3));
+      expect(february.weeks.last.contains(DateTime(2024, 2, 29, 12)), isTrue);
+    });
+  });
+
   group('no screen re-derives a month range by hand', () {
     // The range this replaced was written out three times, and the copy on the home
     // page was the one that drifted. A guard on the shape of the old code is cheap;

@@ -184,34 +184,39 @@ class AppDatabase extends _$AppDatabase {
       (delete(transactions)..where((t) => t.id.equals(id))).go();
 
   Future<double> getTotalIncome({DateTime? start, DateTime? end}) async {
-    var query = select(transactions)..where((t) => t.type.equals('income'));
-    if (start != null && end != null) {
-      query.where((t) => t.date.isBetween(Variable(start), Variable(end)));
-    }
+    final query = select(transactions)..where((t) => t.type.equals('income'));
+    // The bounds are independent on purpose: the dashboard asks for everything up to
+    // the end of the month it is showing, with no lower bound at all.
+    if (start != null) query.where((t) => t.date.isBiggerOrEqualValue(start));
+    if (end != null) query.where((t) => t.date.isSmallerOrEqualValue(end));
     final rows = await query.get();
     return rows.fold<double>(0.0, (sum, t) => sum + t.amount);
   }
 
   Future<double> getTotalExpense({DateTime? start, DateTime? end}) async {
-    var query = select(transactions)..where((t) => t.type.equals('expense'));
-    if (start != null && end != null) {
-      query.where((t) => t.date.isBetween(Variable(start), Variable(end)));
-    }
+    final query = select(transactions)..where((t) => t.type.equals('expense'));
+    if (start != null) query.where((t) => t.date.isBiggerOrEqualValue(start));
+    if (end != null) query.where((t) => t.date.isSmallerOrEqualValue(end));
     final rows = await query.get();
     return rows.fold<double>(0.0, (sum, t) => sum + t.amount);
   }
 
   Future<Map<String, double>> getExpenseByCategory(
       {DateTime? start, DateTime? end}) async {
-    var query = select(transactions).join([
+    final query = select(transactions).join([
       innerJoin(categories, categories.id.equalsExp(transactions.categoryId)),
       leftOuterJoin(subcategories,
           subcategories.id.equalsExp(transactions.subcategoryId)),
     ])
       ..where(transactions.type.equals('expense'));
 
-    if (start != null && end != null) {
-      query.where(transactions.date.isBetween(Variable(start), Variable(end)));
+    // Independent bounds, like the totals: a summary can ask for everything up to a
+    // month's end without naming its start.
+    if (start != null) {
+      query.where(transactions.date.isBiggerOrEqualValue(start));
+    }
+    if (end != null) {
+      query.where(transactions.date.isSmallerOrEqualValue(end));
     }
 
     final rows = await query.get();
@@ -226,15 +231,20 @@ class AppDatabase extends _$AppDatabase {
 
   Future<Map<String, double>> getIncomeByCategory(
       {DateTime? start, DateTime? end}) async {
-    var query = select(transactions).join([
+    final query = select(transactions).join([
       innerJoin(categories, categories.id.equalsExp(transactions.categoryId)),
       leftOuterJoin(subcategories,
           subcategories.id.equalsExp(transactions.subcategoryId)),
     ])
       ..where(transactions.type.equals('income'));
 
-    if (start != null && end != null) {
-      query.where(transactions.date.isBetween(Variable(start), Variable(end)));
+    // Independent bounds, like the totals: a summary can ask for everything up to a
+    // month's end without naming its start.
+    if (start != null) {
+      query.where(transactions.date.isBiggerOrEqualValue(start));
+    }
+    if (end != null) {
+      query.where(transactions.date.isSmallerOrEqualValue(end));
     }
 
     final rows = await query.get();

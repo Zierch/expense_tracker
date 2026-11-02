@@ -82,6 +82,9 @@ class ExportMonthUseCase {
       'summary': <String, dynamic>{
         'totalIncome': totalIncome,
         'totalExpense': totalExpense,
+        // This month's net, not the dashboard's running balance: a backup describes
+        // one month and has to keep meaning the same thing when read alone, years
+        // later, beside other files.
         'balance': totalIncome - totalExpense,
         'incomeByCategory': _breakdown(incomeByCategory),
         'expenseByCategory': _breakdown(expenseByCategory),

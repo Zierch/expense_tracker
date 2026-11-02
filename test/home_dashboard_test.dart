@@ -37,10 +37,11 @@ Future<int> _insert(
   required double amount,
   required DateTime date,
   DateTime? createdAt,
+  String type = 'expense',
 }) async {
-  final int categoryId = (await db.getCategories(type: 'expense')).first.id;
+  final int categoryId = (await db.getCategories(type: type)).first.id;
   return db.insertTransaction(TransactionsCompanion.insert(
-    type: 'expense',
+    type: type,
     amount: amount,
     categoryId: categoryId,
     date: date,
@@ -188,6 +189,29 @@ void main() {
           reason: 'expense has to be the new total, not the one the card started with');
       expect(after, contains(_rupiah(-35000)),
           reason: 'the balance is derived from the two totals, so it has to move too');
+    },
+  );
+
+  sqliteWidgetTest(
+    'the balance carries the previous month forward',
+    (AppDatabase db, WidgetTester tester) async {
+      // Money entered before the month on screen. The card used to start every month
+      // at zero, so a leftover was invisible until it had already been spent.
+      final DateTime lastMonth = DateTime(today.year, today.month - 1, 15);
+      await _insert(db, amount: 5000000, date: lastMonth, type: 'income');
+      await _insert(db, amount: 400000, date: lastMonth);
+      await _insert(db, amount: 10000, date: today);
+
+      await _pumpHome(tester, db);
+      await tester.pumpAndSettle();
+
+      final String text = _summaryText(tester);
+      expect(text, contains(_rupiah(10000)),
+          reason: 'expense is still what this month spent, not a running total');
+      expect(text, contains(_rupiah(0)),
+          reason: 'nothing was earned this month, so income stays at zero');
+      expect(text, contains(_rupiah(4590000)),
+          reason: 'the balance is last month\'s leftover (4,600,000) minus today');
     },
   );
 

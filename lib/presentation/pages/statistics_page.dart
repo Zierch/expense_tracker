@@ -6,16 +6,22 @@ import 'package:expense_tracker/domain/entities/summary_result.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
 import 'package:expense_tracker/presentation/widgets/category_pie_chart.dart';
+import 'package:expense_tracker/presentation/widgets/month_selector.dart';
 
 class StatisticsPage extends ConsumerStatefulWidget {
-  const StatisticsPage({super.key});
+  /// The month this page opens on. Today's when omitted, which is the only thing the
+  /// app itself ever wants; a test hands one in so a fixture date is not a race
+  /// against the clock.
+  final DateTime? initialMonth;
+
+  const StatisticsPage({super.key, this.initialMonth});
 
   @override
   ConsumerState<StatisticsPage> createState() => _StatisticsPageState();
 }
 
 class _StatisticsPageState extends ConsumerState<StatisticsPage> {
-  DateTime _selectedMonth = DateTime.now();
+  late DateTime _selectedMonth = widget.initialMonth ?? DateTime.now();
   int _tabIndex = 0; // 0 = Expense, 1 = Income
 
   /// The one month this page describes.
@@ -33,51 +39,48 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     final transactionsAsync = ref.watch(transactionsStreamProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Statistics'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.calendar_month),
-            onPressed: _pickMonth,
-            tooltip: 'Select Month',
+      appBar: AppBar(title: const Text('Statistics')),
+      body: Column(
+        children: [
+          // The same selector the dashboard uses: this page filters by one month and
+          // nothing finer, so the calendar icon and its day picker asked for a day
+          // whose value went nowhere. Above the list rather than inside it, so the
+          // label keeps the dashboard's alignment instead of stacking its padding.
+          MonthSelector(
+            month: _selectedMonth,
+            onChanged: (DateTime month) =>
+                setState(() => _selectedMonth = month),
+          ),
+          Expanded(
+            child: summaryAsync.when(
+              data: (summary) => transactionsAsync.when(
+                data: (transactions) {
+                  final monthly =
+                      transactions.where((t) => range.contains(t.date)).toList();
+                  final expenses = monthly.where((t) => t.isExpense).toList();
+                  final incomes = monthly.where((t) => t.isIncome).toList();
+
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    children: [
+                      _buildTabSelector(),
+                      const SizedBox(height: 16),
+                      if (_tabIndex == 0)
+                        ..._buildExpenseTab(summary, expenses, transactions)
+                      else
+                        ..._buildIncomeTab(summary, incomes),
+                    ],
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(child: Text('Error: $e')),
+              ),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error: $e')),
+            ),
           ),
         ],
       ),
-      body: summaryAsync.when(
-        data: (summary) => transactionsAsync.when(
-          data: (transactions) {
-            final monthly =
-                transactions.where((t) => range.contains(t.date)).toList();
-            final expenses = monthly.where((t) => t.isExpense).toList();
-            final incomes = monthly.where((t) => t.isIncome).toList();
-
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              children: [
-                _buildHeader(),
-                const SizedBox(height: 16),
-                _buildTabSelector(),
-                const SizedBox(height: 16),
-                if (_tabIndex == 0)
-                  ..._buildExpenseTab(summary, expenses)
-                else
-                  ..._buildIncomeTab(summary, incomes),
-              ],
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('Error: $e')),
-        ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Text(
-      DateFormat('MMMM yyyy').format(_selectedMonth),
-      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
     );
   }
 
@@ -101,14 +104,20 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     );
   }
 
-  List<Widget> _buildExpenseTab(SummaryResult summary, List<TransactionEntity> expenses) {
+  List<Widget> _buildExpenseTab(
+    SummaryResult summary,
+    List<TransactionEntity> monthlyExpenses,
+    List<TransactionEntity> allTransactions,
+  ) {
+    final allExpenses = allTransactions.where((t) => t.isExpense).toList();
     return [
       _totalCard('Total Expense (Monthly)', summary.totalExpense, Colors.red, Icons.north_east_rounded),
       const SizedBox(height: 16),
       _bucketSection(
         title: 'Weekly Summary',
-        subtitle: 'Total expense per week this month',
-        buckets: _weeklyBuckets(expenses),
+        subtitle: 'Monday–Sunday totals; the edge weeks can include the month '
+            'before or after',
+        buckets: _weeklyBuckets(allExpenses),
         color: Colors.red,
         emptyText: 'No expense this month',
       ),
@@ -116,7 +125,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       _bucketSection(
         title: 'Daily Detail',
         subtitle: 'Total expense per day this month',
-        buckets: _dailyBuckets(expenses),
+        buckets: _dailyBuckets(monthlyExpenses),
         color: Colors.orange,
         emptyText: 'No expense this month',
       ),
@@ -288,47 +297,35 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     );
   }
 
+  /// One row per week that holds at least one expense.
+  ///
+  /// [txns] is deliberately every expense, not the month's: the weeks come from
+  /// [MonthRange.weeks] and a week keeps the days it reaches into the neighbouring
+  /// month, which is the whole reason a spend on September's last days shows up in
+  /// October at all.
   List<_Bucket> _weeklyBuckets(List<TransactionEntity> txns) {
-    final MonthRange range = _range;
-    final daysInMonth = range.dayCount;
-    final firstDay = range.start;
-    // weekday: Monday=1, Sunday=7. Days until the first Sunday:
-    final daysToFirstSunday = firstDay.weekday == 7 ? 0 : 7 - firstDay.weekday;
-    final firstSunday = daysToFirstSunday + 1;
+    final List<WeekSpan> weeks = _range.weeks;
+    final List<_Bucket> buckets = <_Bucket>[];
 
-    final totals = <int, double>{};
-    for (final t in txns) {
-      final day = t.date.day;
-      int week;
-      if (day <= firstSunday) {
-        // Week 1: from the 1st up to and including the first Sunday
-        week = 1;
-      } else {
-        // Subsequent weeks: full Mon–Sun blocks
-        week = 2 + ((day - firstSunday - 1) ~/ 7);
+    for (int index = 0; index < weeks.length; index++) {
+      final WeekSpan week = weeks[index];
+      double total = 0;
+      bool any = false;
+      for (final TransactionEntity t in txns) {
+        if (!week.contains(t.date)) continue;
+        total += t.amount;
+        any = true;
       }
-      totals[week] = (totals[week] ?? 0) + t.amount;
+      if (!any) continue;
+
+      buckets.add(_Bucket(
+        'Week ${index + 1}  ·  ${DateFormat('d MMM').format(week.start)}'
+        ' – ${DateFormat('d MMM').format(week.lastDay)}',
+        total,
+      ));
     }
 
-    final weeks = totals.keys.toList()..sort();
-    return weeks.map((w) {
-      int startDay, endDay;
-      if (w == 1) {
-        startDay = 1;
-        endDay = firstSunday;
-      } else {
-        final weekOffset = w - 2;
-        startDay = firstSunday + 1 + (weekOffset * 7);
-        endDay = startDay + 6;
-      }
-      if (endDay > daysInMonth) endDay = daysInMonth;
-      final start = range.day(startDay);
-      final end = range.day(endDay);
-      return _Bucket(
-        'Week $w  ·  ${DateFormat('d MMM').format(start)} – ${DateFormat('d MMM').format(end)}',
-        totals[w]!,
-      );
-    }).toList();
+    return buckets;
   }
 
   List<_Bucket> _dailyBuckets(List<TransactionEntity> txns) {
@@ -395,17 +392,6 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       default:
         return Icons.category;
     }
-  }
-
-  Future<void> _pickMonth() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedMonth,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      initialDatePickerMode: DatePickerMode.year,
-    );
-    if (picked != null) setState(() => _selectedMonth = picked);
   }
 }
 
