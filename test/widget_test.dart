@@ -35,6 +35,8 @@ TransactionEntity _transaction({
 
 Widget _wrap(Widget child, [Brightness brightness = Brightness.light]) =>
     MaterialApp(
+      themeMode: brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+      darkTheme: ThemeData.dark(),
       theme: ThemeData(
         brightness: brightness,
         colorScheme: ColorScheme.fromSeed(
@@ -285,7 +287,9 @@ void main() {
     expect(icon.semanticLabel, 'Grocery');
     expect(icon.icon, Icons.shopping_cart_outlined);
 
-    // Accessible delete icon in dismissible background
+    // The dismissal background is mounted only while swiping.
+    await tester.drag(find.byType(Dismissible), const Offset(-40, 0));
+    await tester.pump();
     final deleteIconFinder = find.byWidgetPredicate(
       (Widget w) =>
           w is Icon &&
