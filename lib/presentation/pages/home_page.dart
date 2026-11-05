@@ -15,21 +15,15 @@ import 'package:expense_tracker/presentation/widgets/transaction_tile.dart';
 abstract final class _HomeDesign {
   // Brand colors
   static const Color primary = Color(0xFF0E5A44);
-  static const Color accent = Color(0xFF10B981);
   static const Color accentLight = Color(0xFFA7F3D0);
 
   // Light theme tokens
-  static const Color lightBackground = Color(0xFFF4F6F8);
-  static const Color lightSurface = Color(0xFFFFFFFF);
   static const Color lightText = Color(0xFF111827);
   static const Color lightMuted = Color(0xFF6B7280);
   static const Color lightBorder = Color(0xFFE5E7EB);
   static const Color lightActivity = Color(0xFFE8F5E9);
 
   // Dark theme tokens
-  static const Color darkBackground = Color(0xFF101916);
-  static const Color darkSurface = Color(0xFF1B2924);
-  static const Color darkElevated = Color(0xFF263A30);
   static const Color darkTinted = Color(0xFF244239);
   static const Color darkText = Color(0xFFEDF7F1);
   static const Color darkMuted = Color(0xFFA8BDB3);
@@ -40,13 +34,11 @@ abstract final class _HomeDesign {
 
   // Spacing
   static const double spacingSmall = 8.0;
-  static const double spacingMedium = 16.0;
   static const double spacingScreen = 20.0;
   static const double spacingLarge = 24.0;
 
   // Corner radii
   static const double radiusButton = 14.0;
-  static const double radiusCard = 16.0;
   static const double radiusActivity = 18.0;
   static const double radiusHero = 24.0;
 

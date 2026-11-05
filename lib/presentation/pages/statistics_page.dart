@@ -12,8 +12,6 @@ import 'package:expense_tracker/presentation/widgets/month_selector.dart';
 abstract final class _StatisticsDesign {
   // Brand colors
   static const Color primary = Color(0xFF0E5A44);
-  static const Color accent = Color(0xFF10B981);
-  static const Color accentLight = Color(0xFFA7F3D0);
 
   // Light theme tokens
   static const Color lightBackground = Color(0xFFF4F6F8);
@@ -27,7 +25,6 @@ abstract final class _StatisticsDesign {
   // Dark theme tokens
   static const Color darkBackground = Color(0xFF101916);
   static const Color darkSurface = Color(0xFF1B2924);
-  static const Color darkElevated = Color(0xFF263A30);
   static const Color darkTinted = Color(0xFF244239);
   static const Color darkText = Color(0xFFEDF7F1);
   static const Color darkMuted = Color(0xFFA8BDB3);
@@ -36,10 +33,6 @@ abstract final class _StatisticsDesign {
   static const Color darkExpense = Color(0xFFFF8A8A);
   static const Color darkIncome = Color(0xFF83DFB7);
 
-  // Spacing & Radii
-  static const double radiusIcon = 12.0;
-  static const double radiusButton = 14.0;
-  static const double radiusCard = 16.0;
 }
 
 class StatisticsPage extends ConsumerStatefulWidget {
