@@ -33,7 +33,12 @@ abstract final class _StatisticsDesign {
   static const Color darkAccent = Color(0xFF83DFB7);
   static const Color darkExpense = Color(0xFFFF8A8A);
   static const Color darkIncome = Color(0xFF83DFB7);
+}
 
+enum StatisticsPeriod {
+  week,
+  month,
+  year,
 }
 
 class StatisticsPage extends ConsumerStatefulWidget {
@@ -41,29 +46,63 @@ class StatisticsPage extends ConsumerStatefulWidget {
   /// app itself ever wants; a test hands one in so a fixture date is not a race
   /// against the clock.
   final DateTime? initialMonth;
+  final StatisticsPeriod initialPeriod;
 
-  const StatisticsPage({super.key, this.initialMonth});
+  const StatisticsPage({
+    super.key,
+    this.initialMonth,
+    this.initialPeriod = StatisticsPeriod.month,
+  });
 
   @override
   ConsumerState<StatisticsPage> createState() => _StatisticsPageState();
 }
 
 class _StatisticsPageState extends ConsumerState<StatisticsPage> {
-  late DateTime _selectedMonth = widget.initialMonth ?? DateTime.now();
+  late DateTime _selectedDate = widget.initialMonth ?? DateTime.now();
+  late StatisticsPeriod _period = widget.initialPeriod;
   int _tabIndex = 0; // 0 = Expense, 1 = Income
 
-  /// The one month this page describes.
+  /// The month this page describes when in month mode.
   ///
   /// The SQL totals and the in-memory buckets both derive from it, so a list and the
   /// total above it cannot end up covering different days.
-  MonthRange get _range => MonthRange.of(_selectedMonth);
+  MonthRange get _range => MonthRange.of(_selectedDate);
 
   @override
   Widget build(BuildContext context) {
     final MonthRange range = _range;
+    final WeekSpan currentWeek = range.weeks.firstWhere(
+      (w) => w.contains(_selectedDate),
+      orElse: () => range.weeks.first,
+    );
+
+    final DateTime rangeStart;
+    final DateTime rangeEnd;
+    final bool Function(DateTime) containsDate;
+
+    switch (_period) {
+      case StatisticsPeriod.week:
+        rangeStart = currentWeek.start;
+        rangeEnd = currentWeek.end;
+        containsDate = currentWeek.contains;
+        break;
+      case StatisticsPeriod.month:
+        rangeStart = range.start;
+        rangeEnd = range.end;
+        containsDate = range.contains;
+        break;
+      case StatisticsPeriod.year:
+        final MonthRange jan = MonthRange.of(DateTime(_selectedDate.year, 1, 1));
+        final MonthRange dec = MonthRange.of(DateTime(_selectedDate.year, 12, 1));
+        rangeStart = jan.start;
+        rangeEnd = dec.end;
+        containsDate = (d) => d.year == _selectedDate.year;
+        break;
+    }
 
     final summaryAsync =
-        ref.watch(summaryProvider(start: range.start, end: range.end));
+        ref.watch(summaryProvider(start: rangeStart, end: rangeEnd));
     final transactionsAsync = ref.watch(transactionsStreamProvider);
 
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -102,23 +141,39 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       ),
       body: Column(
         children: [
-          // The same selector the dashboard uses: this page filters by one month and
-          // nothing finer, so the calendar icon and its day picker asked for a day
-          // whose value went nowhere. Above the list rather than inside it, so the
-          // label keeps the dashboard's alignment instead of stacking its padding.
-          MonthSelector(
-            month: _selectedMonth,
-            onChanged: (DateTime month) =>
-                setState(() => _selectedMonth = month),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+            child: _buildPeriodSelector(
+              isDark: isDark,
+              surfaceColor: surfaceColor,
+              borderColor: borderColor,
+              mutedColor: mutedColor,
+            ),
           ),
+          if (_period == StatisticsPeriod.month)
+            MonthSelector(
+              month: _selectedDate,
+              onChanged: (DateTime month) =>
+                  setState(() => _selectedDate = month),
+            )
+          else if (_period == StatisticsPeriod.week)
+            _buildWeekSelector(
+              week: currentWeek,
+              textColor: textColor,
+            )
+          else
+            _buildYearSelector(
+              year: _selectedDate.year,
+              textColor: textColor,
+            ),
           Expanded(
             child: summaryAsync.when(
               data: (summary) => transactionsAsync.when(
                 data: (transactions) {
-                  final monthly =
-                      transactions.where((t) => range.contains(t.date)).toList();
-                  final expenses = monthly.where((t) => t.isExpense).toList();
-                  final incomes = monthly.where((t) => t.isIncome).toList();
+                  final inPeriod =
+                      transactions.where((t) => containsDate(t.date)).toList();
+                  final expenses = inPeriod.where((t) => t.isExpense).toList();
+                  final incomes = inPeriod.where((t) => t.isIncome).toList();
 
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -132,8 +187,9 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                       const SizedBox(height: 16),
                       if (_tabIndex == 0)
                         ..._buildExpenseTab(
+                          period: _period,
                           summary: summary,
-                          monthlyExpenses: expenses,
+                          periodExpenses: expenses,
                           allTransactions: transactions,
                           textColor: textColor,
                           mutedColor: mutedColor,
@@ -144,6 +200,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                         )
                       else
                         ..._buildIncomeTab(
+                          period: _period,
                           summary: summary,
                           incomes: incomes,
                           textColor: textColor,
@@ -187,6 +244,160 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPeriodSelector({
+    required bool isDark,
+    required Color surfaceColor,
+    required Color borderColor,
+    required Color mutedColor,
+  }) {
+    final activeColor =
+        isDark ? _StatisticsDesign.darkTinted : const Color(0xFFD1FAE5);
+    final activeTextColor =
+        isDark ? _StatisticsDesign.darkAccent : _StatisticsDesign.primary;
+
+    return SizedBox(
+      width: double.infinity,
+      child: SegmentedButton<StatisticsPeriod>(
+        segments: const [
+          ButtonSegment(
+            value: StatisticsPeriod.week,
+            label: Text('Week'),
+          ),
+          ButtonSegment(
+            value: StatisticsPeriod.month,
+            label: Text('Month'),
+          ),
+          ButtonSegment(
+            value: StatisticsPeriod.year,
+            label: Text('Year'),
+          ),
+        ],
+        selected: {_period},
+        onSelectionChanged: (s) => setState(() => _period = s.first),
+        showSelectedIcon: false,
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+            if (states.contains(WidgetState.selected)) {
+              return activeColor;
+            }
+            return surfaceColor;
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+            if (states.contains(WidgetState.selected)) {
+              return activeTextColor;
+            }
+            return mutedColor;
+          }),
+          side: WidgetStatePropertyAll<BorderSide>(
+            BorderSide(color: borderColor),
+          ),
+          shape: WidgetStatePropertyAll<OutlinedBorder>(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+          textStyle: const WidgetStatePropertyAll<TextStyle>(
+            TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeekSelector({
+    required WeekSpan week,
+    required Color textColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            tooltip: 'Previous week',
+            onPressed: () {
+              setState(() {
+                _selectedDate = DateTime(
+                  _selectedDate.year,
+                  _selectedDate.month,
+                  _selectedDate.day - 7,
+                );
+              });
+            },
+          ),
+          Text(
+            '${DateFormat('d MMM').format(week.start)} – ${DateFormat('d MMM yyyy').format(week.lastDay)}',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: textColor,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            tooltip: 'Next week',
+            onPressed: () {
+              setState(() {
+                _selectedDate = DateTime(
+                  _selectedDate.year,
+                  _selectedDate.month,
+                  _selectedDate.day + 7,
+                );
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildYearSelector({
+    required int year,
+    required Color textColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            tooltip: 'Previous year',
+            onPressed: () {
+              setState(() {
+                _selectedDate = DateTime(
+                  _selectedDate.year - 1,
+                  _selectedDate.month,
+                  1,
+                );
+              });
+            },
+          ),
+          Text(
+            '$year',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: textColor,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            tooltip: 'Next year',
+            onPressed: () {
+              setState(() {
+                _selectedDate = DateTime(
+                  _selectedDate.year + 1,
+                  _selectedDate.month,
+                  1,
+                );
+              });
+            },
           ),
         ],
       ),
@@ -247,8 +458,9 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   }
 
   List<Widget> _buildExpenseTab({
+    required StatisticsPeriod period,
     required SummaryResult summary,
-    required List<TransactionEntity> monthlyExpenses,
+    required List<TransactionEntity> periodExpenses,
     required List<TransactionEntity> allTransactions,
     required Color textColor,
     required Color mutedColor,
@@ -258,9 +470,26 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     required Color dailyColor,
   }) {
     final allExpenses = allTransactions.where((t) => t.isExpense).toList();
+    final String totalTitle;
+    final String emptyText;
+    switch (period) {
+      case StatisticsPeriod.week:
+        totalTitle = 'Total Expense (Weekly)';
+        emptyText = 'No expense this week';
+        break;
+      case StatisticsPeriod.month:
+        totalTitle = 'Total Expense (Monthly)';
+        emptyText = 'No expense this month';
+        break;
+      case StatisticsPeriod.year:
+        totalTitle = 'Total Expense (Yearly)';
+        emptyText = 'No expense this year';
+        break;
+    }
+
     return [
       _totalCard(
-        title: 'Total Expense (Monthly)',
+        title: totalTitle,
         value: summary.totalExpense,
         color: expenseColor,
         icon: Icons.north_east_rounded,
@@ -270,30 +499,56 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
         borderColor: borderColor,
       ),
       const SizedBox(height: 16),
-      _bucketSection(
-        title: 'Weekly Summary',
-        subtitle: 'Monday–Sunday totals; the edge weeks can include the month '
-            'before or after',
-        buckets: _weeklyBuckets(allExpenses),
-        color: expenseColor,
-        emptyText: 'No expense this month',
-        surfaceColor: surfaceColor,
-        borderColor: borderColor,
-        textColor: textColor,
-        mutedColor: mutedColor,
-      ),
-      const SizedBox(height: 16),
-      _bucketSection(
-        title: 'Daily Detail',
-        subtitle: 'Total expense per day this month',
-        buckets: _dailyBuckets(monthlyExpenses),
-        color: dailyColor,
-        emptyText: 'No expense this month',
-        surfaceColor: surfaceColor,
-        borderColor: borderColor,
-        textColor: textColor,
-        mutedColor: mutedColor,
-      ),
+      if (period == StatisticsPeriod.month) ...[
+        _bucketSection(
+          title: 'Weekly Summary',
+          subtitle: 'Monday–Sunday totals; the edge weeks can include the month '
+              'before or after',
+          buckets: _weeklyBuckets(allExpenses),
+          color: expenseColor,
+          emptyText: emptyText,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          mutedColor: mutedColor,
+        ),
+        const SizedBox(height: 16),
+        _bucketSection(
+          title: 'Daily Detail',
+          subtitle: 'Total expense per day this month',
+          buckets: _dailyBuckets(periodExpenses),
+          color: dailyColor,
+          emptyText: emptyText,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          mutedColor: mutedColor,
+        ),
+      ] else if (period == StatisticsPeriod.week) ...[
+        _bucketSection(
+          title: 'Daily Detail',
+          subtitle: 'Total expense per day this week',
+          buckets: _dailyBuckets(periodExpenses),
+          color: dailyColor,
+          emptyText: emptyText,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          mutedColor: mutedColor,
+        ),
+      ] else if (period == StatisticsPeriod.year) ...[
+        _bucketSection(
+          title: 'Monthly Summary',
+          subtitle: 'Total expense per month this year',
+          buckets: _monthlyBuckets(periodExpenses),
+          color: expenseColor,
+          emptyText: emptyText,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          mutedColor: mutedColor,
+        ),
+      ],
       const SizedBox(height: 16),
       if (summary.expenseByCategory.isNotEmpty)
         _categorySection(
@@ -309,6 +564,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   }
 
   List<Widget> _buildIncomeTab({
+    required StatisticsPeriod period,
     required SummaryResult summary,
     required List<TransactionEntity> incomes,
     required Color textColor,
@@ -317,9 +573,26 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     required Color borderColor,
     required Color incomeColor,
   }) {
+    final String totalTitle;
+    final String emptyText;
+    switch (period) {
+      case StatisticsPeriod.week:
+        totalTitle = 'Total Income (Weekly)';
+        emptyText = 'No income this week';
+        break;
+      case StatisticsPeriod.month:
+        totalTitle = 'Total Income (Monthly)';
+        emptyText = 'No income this month';
+        break;
+      case StatisticsPeriod.year:
+        totalTitle = 'Total Income (Yearly)';
+        emptyText = 'No income this year';
+        break;
+    }
+
     return [
       _totalCard(
-        title: 'Total Income (Monthly)',
+        title: totalTitle,
         value: summary.totalIncome,
         color: incomeColor,
         icon: Icons.south_west_rounded,
@@ -341,7 +614,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
         )
       else
         _emptyCard(
-          'No income this month',
+          emptyText,
           surfaceColor: surfaceColor,
           borderColor: borderColor,
           mutedColor: mutedColor,
@@ -657,6 +930,27 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     return buckets;
   }
 
+  List<_Bucket> _monthlyBuckets(List<TransactionEntity> txns) {
+    final List<_Bucket> buckets = <_Bucket>[];
+    for (int m = 1; m <= 12; m++) {
+      final MonthRange mRange = MonthRange.of(DateTime(_selectedDate.year, m, 1));
+      double total = 0;
+      bool any = false;
+      for (final TransactionEntity t in txns) {
+        if (!mRange.contains(t.date)) continue;
+        total += t.amount;
+        any = true;
+      }
+      if (!any) continue;
+
+      buckets.add(_Bucket(
+        DateFormat('MMMM yyyy').format(mRange.start),
+        total,
+      ));
+    }
+    return buckets;
+  }
+
   List<_Bucket> _dailyBuckets(List<TransactionEntity> txns) {
     final totals = <String, double>{};
     final dates = <String, DateTime>{};
@@ -667,8 +961,8 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     }
     final keys = totals.keys.toList()..sort((a, b) => b.compareTo(a));
     return keys
-        .map((k) => _Bucket(DateFormat('EEE, d MMM').format(dates[k]!), totals[k]!))
-        .toList();
+      .map((k) => _Bucket(DateFormat('EEE, d MMM').format(dates[k]!), totals[k]!))
+      .toList();
   }
 
   String _fmt(double v) =>

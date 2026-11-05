@@ -136,7 +136,58 @@ void main() {
         findsOneWidget,
         reason: 'and the page now describes September, where that expense lives',
       );
+    },
+  );
 
+  sqliteWidgetTest(
+    'switching period filter to week updates total and shows week detail',
+    (AppDatabase db, WidgetTester tester) async {
+      useTallWindow(tester);
+      await _insert(db, amount: 5000, date: DateTime(2026, 9, 29));
+      await _insert(db, amount: 20000, date: DateTime(2026, 10, 15));
+      await _insert(db, amount: 7000, date: DateTime(2026, 11, 1));
+
+      await pumpStatistics(tester, db);
+
+      await tester.tap(find.text('Week'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Total Expense (Weekly)'), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byType(Card).first, matching: find.text(_rupiah(20000))),
+        findsOneWidget,
+        reason: 'only the mid-October expense is in the current week (12-18 Oct)',
+      );
+      expect(find.text('12 Oct – 18 Oct 2026'), findsOneWidget);
+    },
+  );
+
+  sqliteWidgetTest(
+    'switching period filter to year aggregates all transactions for that year',
+    (AppDatabase db, WidgetTester tester) async {
+      useTallWindow(tester);
+      await _insert(db, amount: 5000, date: DateTime(2026, 9, 29));
+      await _insert(db, amount: 20000, date: DateTime(2026, 10, 15));
+      await _insert(db, amount: 7000, date: DateTime(2026, 11, 1));
+
+      await pumpStatistics(tester, db);
+
+      await tester.tap(find.text('Year'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Total Expense (Yearly)'), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byType(Card).first, matching: find.text(_rupiah(32000))),
+        findsOneWidget,
+        reason: 'all three expenses fall into year 2026',
+      );
+      expect(find.text('2026'), findsOneWidget);
+      expect(find.text('Monthly Summary'), findsOneWidget);
+      expect(find.text('September 2026'), findsOneWidget);
+      expect(find.text('October 2026'), findsOneWidget);
+      expect(find.text('November 2026'), findsOneWidget);
     },
   );
 }
