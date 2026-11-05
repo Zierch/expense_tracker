@@ -62,38 +62,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       appBar: AppBar(
         title: const Text('Settings'),
         automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            tooltip: 'Appearance',
-            icon: const Icon(Icons.palette_outlined),
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Theme'),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (final mode in ThemeMode.values)
-                      ListTile(
-                        title: Text(switch (mode) {
-                          ThemeMode.system => 'Follow the system',
-                          ThemeMode.light => 'Light',
-                          ThemeMode.dark => 'Dark',
-                        }),
-                        trailing: ref.watch(themeModeProvider) == mode
-                            ? const Icon(Icons.check)
-                            : null,
-                        onTap: () {
-                          ref.read(themeModeProvider.notifier).set(mode);
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
       body: account.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -110,6 +78,51 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         ),
         data: (GoogleSignInAccount? user) =>
             user == null ? _buildSignedOut() : _buildSignedIn(user),
+      ),
+    );
+  }
+
+  Widget _buildAppearance() {
+    final mode = ref.watch(themeModeProvider);
+    String label(ThemeMode value) => switch (value) {
+          ThemeMode.system => 'Follow the system',
+          ThemeMode.light => 'Light',
+          ThemeMode.dark => 'Dark',
+        };
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 16, top: 16, right: 16),
+            child: Text('Appearance', style: Theme.of(context).textTheme.titleMedium),
+          ),
+          ListTile(
+            title: const Text('Theme'),
+            subtitle: Text(label(mode)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => showDialog<void>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('Theme'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final choice in ThemeMode.values)
+                      ListTile(
+                        title: Text(label(choice)),
+                        trailing: mode == choice ? const Icon(Icons.check) : null,
+                        onTap: () {
+                          ref.read(themeModeProvider.notifier).set(choice);
+                          Navigator.of(dialogContext).pop();
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -138,6 +151,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: <Widget>[
+        _buildAppearance(),
+        const SizedBox(height: 12),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -218,6 +233,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: <Widget>[
+        _buildAppearance(),
+        const SizedBox(height: 12),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
