@@ -5,6 +5,7 @@ import 'package:expense_tracker/domain/entities/month_range.dart';
 import 'package:expense_tracker/domain/entities/summary_result.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
+import 'package:expense_tracker/presentation/pages/backup_page.dart' show ReportCard;
 import 'package:expense_tracker/presentation/widgets/category_pie_chart.dart';
 import 'package:expense_tracker/presentation/widgets/month_selector.dart';
 
@@ -151,6 +152,8 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                           borderColor: borderColor,
                           incomeColor: incomeColor,
                         ),
+                      const SizedBox(height: 16),
+                      const ReportCard(),
                     ],
                   );
                 },

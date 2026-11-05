@@ -318,7 +318,7 @@ void main() {
             (Ref ref) => Stream<GoogleSignInAccount?>.value(null),
           ),
         ],
-        child: const MaterialApp(home: BackupPage()),
+        child: const MaterialApp(home: Scaffold(body: SingleChildScrollView(child: ReportCard()))),
       ));
       // The page holds live streams; fixed pumps settle it without waiting for a
       // stream that never stops.

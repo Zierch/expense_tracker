@@ -193,8 +193,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         const SizedBox(height: 12),
         const _ImportCard(signedIn: false),
         const SizedBox(height: 12),
-        const _ReportCard(),
-        const SizedBox(height: 12),
         const _UpdateCard(),
         if (_error != null) ...<Widget>[
           const SizedBox(height: 12),
@@ -330,8 +328,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         ),
         const SizedBox(height: 12),
         const _ImportCard(signedIn: true),
-        const SizedBox(height: 12),
-        const _ReportCard(),
         const SizedBox(height: 12),
         const _UpdateCard(),
         if (_result != null) ...<Widget>[
@@ -735,14 +731,14 @@ class _ButtonSpinner extends StatelessWidget {
 /// No sign-in either way. The PDF needs no storage permission because it leaves
 /// through whichever app the user picks; the CSV goes through Android's own
 /// "Save as" dialog, which needs no permission for the same reason.
-class _ReportCard extends ConsumerStatefulWidget {
-  const _ReportCard();
+class ReportCard extends ConsumerStatefulWidget {
+  const ReportCard({super.key});
 
   @override
-  ConsumerState<_ReportCard> createState() => _ReportCardState();
+  ConsumerState<ReportCard> createState() => _ReportCardState();
 }
 
-class _ReportCardState extends ConsumerState<_ReportCard> {
+class _ReportCardState extends ConsumerState<ReportCard> {
   static final DateFormat _day = DateFormat('d MMM yyyy');
 
   late DateTimeRange _range = _thisMonth();
