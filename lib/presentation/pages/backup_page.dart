@@ -14,6 +14,7 @@ import 'package:expense_tracker/domain/usecases/export_month_usecase.dart';
 import 'package:expense_tracker/domain/usecases/export_pdf_usecase.dart';
 import 'package:expense_tracker/domain/usecases/import_month_usecase.dart';
 import 'package:expense_tracker/presentation/providers/backup_providers.dart';
+import 'package:expense_tracker/presentation/providers/theme_provider.dart';
 import 'package:expense_tracker/presentation/providers/update_providers.dart';
 
 /// Signs in with Google and archives a month's transactions to Google Drive.
@@ -58,7 +59,42 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         ref.watch(googleAccountProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Backup')),
+      appBar: AppBar(
+        title: const Text('Settings'),
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            tooltip: 'Appearance',
+            icon: const Icon(Icons.palette_outlined),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Theme'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final mode in ThemeMode.values)
+                      ListTile(
+                        title: Text(switch (mode) {
+                          ThemeMode.system => 'Follow the system',
+                          ThemeMode.light => 'Light',
+                          ThemeMode.dark => 'Dark',
+                        }),
+                        trailing: ref.watch(themeModeProvider) == mode
+                            ? const Icon(Icons.check)
+                            : null,
+                        onTap: () {
+                          ref.read(themeModeProvider.notifier).set(mode);
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: account.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (Object error, StackTrace stackTrace) => ListView(

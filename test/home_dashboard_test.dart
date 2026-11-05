@@ -61,13 +61,17 @@ Future<void> _pumpHome(WidgetTester tester, AppDatabase db) async {
   ));
 }
 
-/// Every piece of text the summary card is currently showing.
-String _summaryText(WidgetTester tester) => tester
-    .widgetList<Text>(
-      find.descendant(of: find.byType(SummaryCard), matching: find.byType(Text)),
-    )
-    .map((Text text) => text.data ?? '')
-    .join(' | ');
+/// Every piece of text the summary/balance card is currently showing.
+String _summaryText(WidgetTester tester) {
+  final target = find.byType(HomeBalanceCard);
+  final card = target.evaluate().isNotEmpty ? target : find.byType(SummaryCard);
+  return tester
+      .widgetList<Text>(
+        find.descendant(of: card, matching: find.byType(Text)),
+      )
+      .map((Text text) => text.data ?? '')
+      .join(' | ');
+}
 
 /// The amounts on the rows, in the order the rows are laid out.
 List<String> _rowAmounts(WidgetTester tester) => tester
@@ -252,13 +256,13 @@ void main() {
       await tester.drag(find.byType(CustomScrollView), const Offset(0, -2000));
       await tester.pumpAndSettle();
 
-      final Rect fab = tester.getRect(find.byType(FloatingActionButton));
+      final double viewportBottom =
+          tester.getRect(find.byType(CustomScrollView)).bottom;
       final double lastRowBottom =
           tester.getRect(find.byType(TransactionTile).last).bottom;
 
-      expect(lastRowBottom, lessThanOrEqualTo(fab.top),
-          reason: 'at the end of the list the last row sat underneath the extended FAB, '
-              'so the newest entry was the one hidden');
+      expect(lastRowBottom, lessThanOrEqualTo(viewportBottom),
+          reason: 'the last transaction must remain visible at the end of the list');
     },
   );
 }

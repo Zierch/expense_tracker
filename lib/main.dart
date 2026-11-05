@@ -15,7 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// The backdrop the pages paint, shared with the system bars: the navigation bar
 /// has to look like the page behind it, not like a strip of another app.
-const Color _darkBackground = Color(0xFF0E1113);
+const Color _darkBackground = Color(0xFF101916);
 const Color _lightBackground = Color(0xFFF4F6F8);
 
 /// The system bars in the app's own brightness.
@@ -58,9 +58,33 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: rootNavigatorKey,
     initialLocation: '/',
     routes: [
-      GoRoute(
-        path: '/',
-        builder: (context, state) => const HomePage(),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, shell) => Scaffold(
+          body: shell,
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: shell.currentIndex,
+            onDestinationSelected: (index) => shell.goBranch(
+              index,
+              initialLocation: index == shell.currentIndex,
+            ),
+            destinations: const [
+              NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+              NavigationDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: 'Statistics'),
+              NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
+            ],
+          ),
+        ),
+        branches: [
+          StatefulShellBranch(routes: [
+            GoRoute(path: '/', builder: (context, state) => const HomePage()),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(path: '/statistics', builder: (context, state) => const StatisticsPage()),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(path: '/backup', builder: (context, state) => const BackupPage()),
+          ]),
+        ],
       ),
       GoRoute(
         path: '/add',
@@ -71,14 +95,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => AddTransactionPage(
           transactionId: int.tryParse(state.pathParameters['id'] ?? ''),
         ),
-      ),
-      GoRoute(
-        path: '/statistics',
-        builder: (context, state) => const StatisticsPage(),
-      ),
-      GoRoute(
-        path: '/backup',
-        builder: (context, state) => const BackupPage(),
       ),
     ],
   );
@@ -206,10 +222,10 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
     final isDark = brightness == Brightness.dark;
 
     final scheme = ColorScheme.fromSeed(
-      seedColor: isDark ? const Color(0xFF36C79B) : const Color(0xFF00897B),
+      seedColor: isDark ? const Color(0xFF83DFB7) : const Color(0xFF0E5A44),
       brightness: brightness,
     ).copyWith(
-      surface: isDark ? const Color(0xFF15181B) : const Color(0xFFFFFFFF),
+      surface: isDark ? const Color(0xFF1B2924) : const Color(0xFFFFFFFF),
     );
 
     return ThemeData(
@@ -232,16 +248,16 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
         elevation: 0,
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
-        color: isDark ? const Color(0xFF1A1E22) : const Color(0xFFFFFFFF),
+        color: isDark ? const Color(0xFF1B2924) : const Color(0xFFFFFFFF),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(
-            color: isDark ? const Color(0xFF2A3036) : const Color(0xFFE7EAED),
+            color: isDark ? const Color(0xFF31443A) : const Color(0xFFE7EAED),
           ),
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: isDark ? const Color(0xFF2A3036) : const Color(0xFFE7EAED),
+        color: isDark ? const Color(0xFF31443A) : const Color(0xFFE7EAED),
         space: 1,
         thickness: 1,
       ),
@@ -266,13 +282,13 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
-            color: isDark ? const Color(0xFF2A3036) : const Color(0xFFD9DEE3),
+            color: isDark ? const Color(0xFF31443A) : const Color(0xFFD9DEE3),
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
-            color: isDark ? const Color(0xFF2A3036) : const Color(0xFFD9DEE3),
+            color: isDark ? const Color(0xFF31443A) : const Color(0xFFD9DEE3),
           ),
         ),
       ),
