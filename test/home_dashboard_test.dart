@@ -231,6 +231,9 @@ void main() {
       await _pumpHome(tester, db);
       await tester.pumpAndSettle();
 
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+
       expect(
         _rowAmounts(tester),
         <String>['-${_rupiah(3000)}', '-${_rupiah(2000)}', '-${_rupiah(1000)}'],

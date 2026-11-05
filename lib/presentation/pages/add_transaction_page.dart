@@ -123,6 +123,25 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
     await _loadCategories();
   }
 
+  void _appendAmount(String digits) {
+    final grouped = formatIdrDigits('${idrDigitsOf(_amountController.text)}$digits');
+    if (grouped == null) return;
+    _amountController.value = TextEditingValue(
+      text: grouped,
+      selection: TextSelection.collapsed(offset: grouped.length),
+    );
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && mounted) setState(() => _date = _dateOnly(picked));
+  }
+
   @override
   void dispose() {
     _amountController.dispose();
