@@ -496,8 +496,6 @@ class HomeActivityCard extends StatelessWidget {
         isDark ? _HomeDesign.darkBorder : _HomeDesign.lightBorder;
     final Color textColor =
         isDark ? _HomeDesign.darkText : _HomeDesign.lightText;
-    final Color mutedColor =
-        isDark ? _HomeDesign.darkMuted : _HomeDesign.lightMuted;
 
     return Container(
       margin: const EdgeInsets.symmetric(
@@ -529,31 +527,13 @@ class HomeActivityCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 14),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Track your spending',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: textColor,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Record a new entry',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: mutedColor,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                  child: Text(
+                    'Every little entry counts.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: textColor,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),

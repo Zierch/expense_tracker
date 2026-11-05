@@ -202,12 +202,14 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                         ..._buildIncomeTab(
                           period: _period,
                           summary: summary,
-                          incomes: incomes,
+                          periodIncomes: incomes,
+                          allTransactions: transactions,
                           textColor: textColor,
                           mutedColor: mutedColor,
                           surfaceColor: surfaceColor,
                           borderColor: borderColor,
                           incomeColor: incomeColor,
+                          dailyColor: dailyColor,
                         ),
                       const SizedBox(height: 16),
                       const ReportCard(),
@@ -566,13 +568,16 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   List<Widget> _buildIncomeTab({
     required StatisticsPeriod period,
     required SummaryResult summary,
-    required List<TransactionEntity> incomes,
+    required List<TransactionEntity> periodIncomes,
+    required List<TransactionEntity> allTransactions,
     required Color textColor,
     required Color mutedColor,
     required Color surfaceColor,
     required Color borderColor,
     required Color incomeColor,
+    required Color dailyColor,
   }) {
+    final allIncomes = allTransactions.where((t) => t.isIncome).toList();
     final String totalTitle;
     final String emptyText;
     switch (period) {
@@ -602,6 +607,57 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
         borderColor: borderColor,
       ),
       const SizedBox(height: 16),
+      if (period == StatisticsPeriod.month) ...[
+        _bucketSection(
+          title: 'Weekly Summary',
+          subtitle: 'Monday–Sunday totals; the edge weeks can include the month '
+              'before or after',
+          buckets: _weeklyBuckets(allIncomes),
+          color: incomeColor,
+          emptyText: emptyText,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          mutedColor: mutedColor,
+        ),
+        const SizedBox(height: 16),
+        _bucketSection(
+          title: 'Daily Detail',
+          subtitle: 'Total income per day this month',
+          buckets: _dailyBuckets(periodIncomes),
+          color: dailyColor,
+          emptyText: emptyText,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          mutedColor: mutedColor,
+        ),
+      ] else if (period == StatisticsPeriod.week) ...[
+        _bucketSection(
+          title: 'Daily Detail',
+          subtitle: 'Total income per day this week',
+          buckets: _dailyBuckets(periodIncomes),
+          color: dailyColor,
+          emptyText: emptyText,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          mutedColor: mutedColor,
+        ),
+      ] else if (period == StatisticsPeriod.year) ...[
+        _bucketSection(
+          title: 'Monthly Summary',
+          subtitle: 'Total income per month this year',
+          buckets: _monthlyBuckets(periodIncomes),
+          color: incomeColor,
+          emptyText: emptyText,
+          surfaceColor: surfaceColor,
+          borderColor: borderColor,
+          textColor: textColor,
+          mutedColor: mutedColor,
+        ),
+      ],
+      const SizedBox(height: 16),
       if (summary.incomeByCategory.isNotEmpty)
         _categorySection(
           title: 'Income by Category',
@@ -610,13 +666,6 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
           surfaceColor: surfaceColor,
           borderColor: borderColor,
           textColor: textColor,
-          mutedColor: mutedColor,
-        )
-      else
-        _emptyCard(
-          emptyText,
-          surfaceColor: surfaceColor,
-          borderColor: borderColor,
           mutedColor: mutedColor,
         ),
     ];
@@ -694,6 +743,10 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     required Color textColor,
     required Color mutedColor,
   }) {
+    final double maxTotal = buckets.isEmpty
+        ? 0.0
+        : buckets.map((b) => b.total).reduce((a, b) => a > b ? a : b);
+
     return Card(
       elevation: 0,
       color: surfaceColor,
@@ -735,29 +788,56 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
               ...buckets.asMap().entries.map((entry) {
                 final int idx = entry.key;
                 final _Bucket b = entry.value;
+                final double factor =
+                    maxTotal > 0 ? (b.total / maxTotal).clamp(0.0, 1.0) : 0.0;
                 return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (idx > 0)
                       Divider(color: borderColor, height: 16, thickness: 1),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            b.label,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: textColor,
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                b.label,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: textColor,
+                                ),
+                              ),
+                              Text(
+                                _fmt(b.total),
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: color,
+                                ),
+                              ),
+                            ],
                           ),
-                          Text(
-                            _fmt(b.total),
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: color,
+                          const SizedBox(height: 6),
+                          Container(
+                            height: 6,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: borderColor.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor: factor,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                              ),
                             ),
                           ),
                         ],

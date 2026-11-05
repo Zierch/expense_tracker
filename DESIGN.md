@@ -109,6 +109,7 @@ Use rounded 16px transaction cards, approximately 20px settings panels and 24px 
 
 ## Components
 
+- Splash: in dark system mode use the `dark-background` canvas and the existing centered splash icon; Android controls the native launch layout. The native launch theme follows the system setting before Flutter loads the saved in-app theme.
 - Home: balance card with `assets/images/piggy_bank.png`; activity card with `assets/images/receipt_mascot.png` and one Add action; recent transactions follow below.
 - Transaction rows: category icon tile at left, name and time in the middle, right-aligned amount. Grocery and entertainment use their respective muted backgrounds in each theme.
 - Statistics: Expense/Income and Week/Month/Year filters, charts, and an independently ranged PDF/CSV report. Empty and error states remain readable in both themes.

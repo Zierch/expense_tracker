@@ -33,7 +33,32 @@ TransactionEntity _transaction({
   );
 }
 
-Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
+Widget _wrap(Widget child, [Brightness brightness = Brightness.light]) =>
+    MaterialApp(
+      theme: ThemeData(
+        brightness: brightness,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF0E5A44),
+          brightness: brightness,
+        ),
+      ),
+      home: Scaffold(body: child),
+    );
+
+BoxDecoration _iconTileDecoration(WidgetTester tester) {
+  final container = tester.widget<Container>(
+    find.byKey(const Key('transaction_tile_icon_container')),
+  );
+  return container.decoration as BoxDecoration;
+}
+
+Icon _iconWidget(WidgetTester tester) {
+  final iconFinder = find.descendant(
+    of: find.byKey(const Key('transaction_tile_icon_container')),
+    matching: find.byType(Icon),
+  );
+  return tester.widget<Icon>(iconFinder);
+}
 
 void main() {
   testWidgets('renders the category name and note', (WidgetTester tester) async {
@@ -131,5 +156,176 @@ void main() {
 
     expect(deleted, isTrue);
     expect(find.byType(TransactionTile), findsNothing);
+  });
+
+  testWidgets('renders grocery tile colors in light and dark themes', (
+    WidgetTester tester,
+  ) async {
+    final groceryTx = _transaction(
+      type: 'expense',
+      categoryName: 'Expense',
+      subcategoryName: 'Grocery',
+    );
+
+    // Light theme grocery tokens from DESIGN.md
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: groceryTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+      Brightness.light,
+    ));
+
+    expect(_iconTileDecoration(tester).color, const Color(0xFFE4F1E9));
+    expect(_iconWidget(tester).color, const Color(0xFF0E5A44));
+
+    // Dark theme grocery tokens from DESIGN.md
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: groceryTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+      Brightness.dark,
+    ));
+
+    expect(_iconTileDecoration(tester).color, const Color(0xFF29483B));
+    expect(_iconWidget(tester).color, const Color(0xFF83DFB7));
+  });
+
+  testWidgets('renders entertainment tile colors in light and dark themes', (
+    WidgetTester tester,
+  ) async {
+    final entertainmentTx = _transaction(
+      type: 'expense',
+      categoryName: 'Entertainment',
+    );
+
+    // Light theme entertainment tokens from DESIGN.md
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: entertainmentTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+      Brightness.light,
+    ));
+
+    expect(_iconTileDecoration(tester).color, const Color(0xFFEEF0F5));
+    expect(_iconWidget(tester).color, const Color(0xFF4338CA));
+
+    // Dark theme entertainment tokens from DESIGN.md
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: entertainmentTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+      Brightness.dark,
+    ));
+
+    expect(_iconTileDecoration(tester).color, const Color(0xFF353E4C));
+    expect(_iconWidget(tester).color, const Color(0xFFC7D2FE));
+  });
+
+  testWidgets('renders income tile colors in light and dark themes', (
+    WidgetTester tester,
+  ) async {
+    final incomeTx = _transaction(
+      type: 'income',
+      categoryName: 'Salary',
+    );
+
+    // Light theme income tokens from DESIGN.md
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: incomeTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+      Brightness.light,
+    ));
+
+    expect(_iconTileDecoration(tester).color, const Color(0xFFD1FAE5));
+    expect(_iconWidget(tester).color, const Color(0xFF0E5A44));
+
+    // Dark theme income tokens from DESIGN.md
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: incomeTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+      Brightness.dark,
+    ));
+
+    expect(_iconTileDecoration(tester).color, const Color(0xFF24473B));
+    expect(_iconWidget(tester).color, const Color(0xFF83DFB7));
+  });
+
+  testWidgets('provides accessible semantic labels on icons', (
+    WidgetTester tester,
+  ) async {
+    final groceryTx = _transaction(
+      type: 'expense',
+      categoryName: 'Grocery',
+    );
+
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: groceryTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+    ));
+
+    // Accessible category icon
+    final icon = _iconWidget(tester);
+    expect(icon.semanticLabel, 'Grocery');
+    expect(icon.icon, Icons.shopping_cart_outlined);
+
+    // Accessible delete icon in dismissible background
+    final deleteIconFinder = find.byWidgetPredicate(
+      (Widget w) =>
+          w is Icon &&
+          w.icon == Icons.delete_outline &&
+          w.semanticLabel == 'Delete transaction',
+    );
+    expect(deleteIconFinder, findsOneWidget);
+  });
+
+  testWidgets('applies dark theme surface, border, and amount text contrast', (
+    WidgetTester tester,
+  ) async {
+    final expenseTx = _transaction(
+      type: 'expense',
+      amount: 45000,
+      categoryName: 'Other Needs',
+    );
+
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: expenseTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+      Brightness.dark,
+    ));
+
+    // Outer card container
+    final inkWellFinder = find.byType(InkWell);
+    final cardContainer = tester.widget<Container>(
+      find.descendant(of: inkWellFinder, matching: find.byType(Container)).first,
+    );
+    final cardDecoration = cardContainer.decoration as BoxDecoration;
+    final cardBorder = cardDecoration.border as Border;
+
+    expect(cardDecoration.color, const Color(0xFF1B2924)); // dark-surface
+    expect(cardBorder.top.color, const Color(0xFF31443A)); // dark-border
+
+    // Expense amount color in dark theme (dark-error WCAG compliant)
+    final amountText = tester.widget<Text>(find.textContaining('45.000'));
+    expect(amountText.style?.color, const Color(0xFFFF8A8A));
   });
 }

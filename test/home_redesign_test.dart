@@ -47,7 +47,7 @@ void main() {
 
       // Verify Add action on activity card
       expect(find.widgetWithText(FilledButton, 'Add'), findsOneWidget);
-      expect(find.text('Track your spending'), findsOneWidget);
+      expect(find.text('Every little entry counts.'), findsOneWidget);
     },
   );
 
