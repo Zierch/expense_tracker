@@ -190,7 +190,8 @@ class _MockTransactionRepository implements TransactionRepository {
         t.type == type &&
         (start == null || !t.date.isBefore(start)) &&
         (end == null || !t.date.isAfter(end)))) {
-      map[t.categoryName] = (map[t.categoryName] ?? 0.0) + t.amount;
+      final String category = t.categoryName ?? 'Uncategorized';
+      map[category] = (map[category] ?? 0.0) + t.amount;
     }
     return map;
   }
