@@ -60,7 +60,9 @@ class DriveBackupFile {
 class GoogleDriveService {
   GoogleDriveService._()
       : _http = http.Client(),
-        _headers = null;
+        _headers = null,
+        _googleSignIn = GoogleSignIn.instance,
+        _signInMemory = const GoogleSignInMemory();
 
   /// The same service with the network and the Google hand-off replaced.
   ///
@@ -73,8 +75,14 @@ class GoogleDriveService {
   GoogleDriveService.forTesting({
     required http.Client client,
     required Future<Map<String, String>> Function() headers,
+    GoogleSignIn? googleSignIn,
+    GoogleSignInMemory? signInMemory,
+    GoogleSignInAccount? initialAccount,
   })  : _http = client,
-        _headers = headers;
+        _headers = headers,
+        _googleSignIn = googleSignIn ?? GoogleSignIn.instance,
+        _signInMemory = signInMemory ?? const GoogleSignInMemory(),
+        _account = initialAccount;
 
   /// The one HTTP client this service uses.
   ///
@@ -109,7 +117,7 @@ class GoogleDriveService {
   /// better than letting a listing that never ends hold the screen.
   static const int _maxListPages = 5;
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  final GoogleSignIn _googleSignIn;
   final StreamController<GoogleSignInAccount?> _accountController =
       StreamController<GoogleSignInAccount?>.broadcast();
 
@@ -119,7 +127,7 @@ class GoogleDriveService {
 
   /// Whether this device has signed in before, so the SDK is only asked to
   /// restore a session where one could exist. See [restoreRememberedSignIn].
-  final GoogleSignInMemory _signInMemory = const GoogleSignInMemory();
+  final GoogleSignInMemory _signInMemory;
 
   bool get isConfigured => GoogleConfig.isConfigured;
 
@@ -187,23 +195,6 @@ class GoogleDriveService {
         _accountController.addError(error);
       },
     );
-
-    // `reportAllExceptions` is what tells a declined account sheet apart from a
-    // device that has no session at all — the two are the same `null` without
-    // it, and one of them has to be remembered differently. See
-    // [restoreRememberedSignIn].
-    await restoreRememberedSignIn(
-      _signInMemory,
-      () async {
-        final GoogleSignInAccount? restored = await _googleSignIn
-            .attemptLightweightAuthentication(reportAllExceptions: true);
-        if (restored == null) return false;
-
-        _account = restored;
-        _accountController.add(restored);
-        return true;
-      },
-    );
   }
 
   /// Opens the Google account picker and returns the signed-in account.
@@ -235,10 +226,12 @@ class GoogleDriveService {
       await _googleSignIn.signOut();
     } on GoogleSignInException catch (error) {
       throw BackupException(_describeSignInError(error));
+    } finally {
+      _account = null;
+      _accountController.add(null);
+      // Signing out is the user's answer: no launch should try to restore it.
+      await _signInMemory.forget();
     }
-    _account = null;
-    // Signing out is the user's answer: no launch should try to restore it.
-    await _signInMemory.forget();
   }
 
   /// Revokes this app's Drive authorisation, then signs out.
@@ -266,9 +259,11 @@ class GoogleDriveService {
         'for certain, remove Expense Tracker at '
         'https://myaccount.google.com/permissions.',
       );
+    } finally {
+      _account = null;
+      _accountController.add(null);
+      await _signInMemory.forget();
     }
-    _account = null;
-    await _signInMemory.forget();
   }
 
   /// True when the Drive scope was already granted for the signed-in account.
