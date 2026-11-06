@@ -10,9 +10,10 @@ import 'package:http/http.dart' as http;
 ///
 /// Invariants:
 /// - Generates unique filenames: `expense-tracker-snapshot-yyyyMMddTHHmmss-<nonce>.json`.
+/// - Orders snapshots by server `createdTime` with deterministic ID tie-breaking.
 /// - Verifies every upload by reading back content bytes and matching before pruning.
 /// - Retention policy: keeps the latest 3 owned snapshots; NEVER deletes legacy monthly backups.
-/// - Fails closed: if listing is ambiguous, verification fails, timestamps are ambiguous,
+/// - Fails closed: if listing is ambiguous, verification fails, metadata is missing/invalid,
 ///   or concurrency is uncertain, pruning is aborted and no files are removed.
 class SnapshotDriveService {
   SnapshotDriveService({
@@ -87,7 +88,9 @@ class SnapshotDriveService {
           uploaded['name'] != name ||
           uploaded['mimeType'] != _jsonMime ||
           !(uploaded['parents'] as List<dynamic>? ?? <dynamic>[]).contains(folder) ||
-          uploaded['ownedByMe'] != true) {
+          uploaded['ownedByMe'] != true ||
+          uploaded['createdTime'] is! String ||
+          DateTime.tryParse(uploaded['createdTime'] as String) == null) {
         throw BackupException(
           'Snapshot upload could not be verified in Drive listing; aborting retention pruning.',
         );
@@ -117,25 +120,43 @@ class SnapshotDriveService {
         );
       }
 
-      // Prevent pruning if timestamps are ambiguous (duplicate timestamps)
-      final Set<String> seenTimestamps = <String>{};
+      // Guard ambiguous listing: ensure unique candidate IDs and valid metadata
+      final Set<String> seenCandidateIds = <String>{};
       for (final Map<String, dynamic> candidate in snapshotCandidates) {
-        final String fName = candidate['name'] as String? ?? '';
-        final RegExpMatch? match = _ownedSnapshotName.firstMatch(fName);
-        final String? fStamp = match?.group(1);
-        if (fStamp == null || !seenTimestamps.add(fStamp)) {
+        final Object? cId = candidate['id'];
+        if (cId is! String || cId.isEmpty || !seenCandidateIds.add(cId)) {
           throw BackupException(
-            'Drive snapshot timestamps are ambiguous; aborting retention pruning.',
+            'Drive snapshot listing is ambiguous; aborting retention pruning.',
+          );
+        }
+
+        final Object? cTime = candidate['createdTime'];
+        if (cTime is! String || DateTime.tryParse(cTime) == null) {
+          throw BackupException(
+            'Drive snapshot metadata is missing or invalid; aborting retention pruning.',
           );
         }
       }
 
-      // Sort newest to oldest by filename (contains ISO date-time stamp)
-      snapshotCandidates.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
-        final String nameA = a['name'] as String? ?? '';
-        final String nameB = b['name'] as String? ?? '';
-        return nameB.compareTo(nameA);
-      });
+      // Detect missing or invalid metadata across all snapshot files in the folder listing
+      for (final Map<String, dynamic> f in rows) {
+        final String fName = f['name'] as String? ?? '';
+        if (_ownedSnapshotName.hasMatch(fName)) {
+          final Object? fId = f['id'];
+          final Object? fTime = f['createdTime'];
+          if (fId is! String ||
+              fId.isEmpty ||
+              fTime is! String ||
+              DateTime.tryParse(fTime) == null) {
+            throw BackupException(
+              'Drive snapshot metadata is missing or invalid; aborting retention pruning.',
+            );
+          }
+        }
+      }
+
+      // Sort newest to oldest by server createdTime, with deterministic ID tie-breaking
+      snapshotCandidates.sort(_compareSnapshotsNewestFirst);
 
       // Prevent pruning on concurrent writers: uploaded snapshot must be the latest
       if (snapshotCandidates.first['id'] != fileId) {
@@ -188,11 +209,7 @@ class SnapshotDriveService {
           _ownedSnapshotName.hasMatch(name);
     }).toList();
 
-    snapshots.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
-      final String nameA = a['name'] as String? ?? '';
-      final String nameB = b['name'] as String? ?? '';
-      return nameB.compareTo(nameA);
-    });
+    snapshots.sort(_compareSnapshotsNewestFirst);
 
     return snapshots;
   }
@@ -279,7 +296,7 @@ class SnapshotDriveService {
     return _query(
       auth,
       "'${_escape(folder)}' in parents and trashed = false",
-      'files(id,name,mimeType,parents,ownedByMe),nextPageToken',
+      'files(id,name,mimeType,parents,ownedByMe,createdTime),nextPageToken',
     );
   }
 
@@ -384,6 +401,27 @@ class SnapshotDriveService {
       );
     }
     return r.bodyBytes;
+  }
+
+  static int _compareSnapshotsNewestFirst(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    final DateTime? timeA =
+        DateTime.tryParse(a['createdTime'] as String? ?? '');
+    final DateTime? timeB =
+        DateTime.tryParse(b['createdTime'] as String? ?? '');
+    if (timeA != null && timeB != null) {
+      final int timeCmp = timeB.compareTo(timeA);
+      if (timeCmp != 0) return timeCmp;
+    } else if (timeB != null) {
+      return 1;
+    } else if (timeA != null) {
+      return -1;
+    }
+    final String idA = a['id'] as String? ?? '';
+    final String idB = b['id'] as String? ?? '';
+    return idB.compareTo(idA);
   }
 
   static bool _sameBytes(List<int> a, List<int> b) {
