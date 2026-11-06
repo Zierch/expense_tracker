@@ -698,8 +698,8 @@ void main() {
         random: _FixedRandom(<int>[1, 2, 3, 4, 5, 6, 7, 8]),
       );
 
-      expect(
-        () => service.uploadSnapshot(payload),
+      await expectLater(
+        service.uploadSnapshot(payload),
         throwsA(
           isA<BackupException>().having(
             (BackupException e) => e.message,
