@@ -439,8 +439,8 @@ void main() {
         repo: repo,
       );
 
-      expect(
-        () => coordinator.backup(),
+      await expectLater(
+        coordinator.backup(),
         throwsA(isA<BackupException>().having(
           (BackupException e) => e.message,
           'message',
