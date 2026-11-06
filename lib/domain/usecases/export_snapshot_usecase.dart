@@ -66,7 +66,7 @@ class ExportSnapshotUseCase {
 
     final Map<String, dynamic> json = <String, dynamic>{
       'app': 'Expense Tracker',
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'backupType': 'snapshot',
       'currency': 'IDR',
       'exportedAt': _timestamp.format(exportTime),

@@ -1,18 +1,16 @@
+import 'package:intl/intl.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
 import 'package:expense_tracker/data/services/google_config.dart';
 import 'package:expense_tracker/data/services/google_drive_service.dart';
 import 'package:expense_tracker/data/services/pdf_report_builder.dart';
 import 'package:expense_tracker/domain/usecases/export_csv_usecase.dart';
-import 'package:expense_tracker/domain/usecases/export_month_usecase.dart';
 import 'package:expense_tracker/domain/usecases/export_pdf_usecase.dart';
-import 'package:expense_tracker/domain/usecases/import_month_usecase.dart';
 import 'package:expense_tracker/presentation/providers/backup_providers.dart';
 import 'package:expense_tracker/presentation/providers/theme_provider.dart';
 import 'package:expense_tracker/presentation/providers/update_providers.dart';
@@ -170,8 +168,7 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// Settings screen providing appearance options, Google Drive account
-/// management, preview of full snapshot/sync, and monthly export/import controls.
+/// Settings screen for appearance, Google Drive, and snapshot backup and sync.
 class BackupPage extends ConsumerStatefulWidget {
   const BackupPage({super.key});
 
@@ -180,31 +177,13 @@ class BackupPage extends ConsumerStatefulWidget {
 }
 
 class _BackupPageState extends ConsumerState<BackupPage> {
-  static final DateFormat _monthLabel = DateFormat('MMMM yyyy');
-
-  DateTime _month = DateTime.now();
   bool _busy = false;
   String? _error;
 
   /// Title shown above [_error]. Set by [_run], because a single error slot
-  /// serves sign-in, export, sign-out and disconnect alike.
-  String _errorTitle = 'Export failed';
-  String? _hint;
-  DriveUploadResult? _result;
-
-  /// Which month of a batch export is being uploaded, for the button's label.
-  String? _progress;
-
-  /// How a finished batch export went. Kept apart from [_result], which answers
-  /// for one month.
-  String? _batch;
-
+  /// serves sign-in, sign-out and disconnect alike.
+  String _errorTitle = 'Drive action failed';
   GoogleDriveService get _service => ref.read(googleDriveServiceProvider);
-
-  bool get _isCurrentMonth {
-    final DateTime now = DateTime.now();
-    return _month.year == now.year && _month.month == now.month;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -329,10 +308,9 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     );
   }
 
-  /// Preview of the full snapshot & sync design. Both actions are intentionally
-  /// disabled and explicitly marked unavailable to protect live user data from
-  /// accidental overwrites.
   Widget _buildSnapshotSyncPreview() {
+    final snapshotState = ref.watch(snapshotActionProvider);
+    final signedIn = _service.currentAccount != null;
     final ThemeData theme = Theme.of(context);
     final bool isDark = theme.brightness == Brightness.dark;
 
@@ -343,24 +321,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           _SectionHeader(
             icon: Icons.sync_rounded,
             title: 'Backup & Sync',
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? _DesignTokens.darkElevated
-                    : const Color(0xFFE5E7EB),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                'Unavailable',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: isDark
-                      ? _DesignTokens.darkMuted
-                      : _DesignTokens.lightMuted,
-                ),
-              ),
-            ),
+
           ),
           const SizedBox(height: 12),
           Text(
@@ -396,9 +357,9 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Full snapshot backup and sync are currently unavailable. '
-                    'Existing multi-month data is safely preserved using the '
-                    'monthly operations below to prevent accidental data overwrite.',
+                    signedIn
+                        ? 'Sync merges transactions without overwriting local data. Use one device at a time.'
+                        : 'Sign in with Google to back up or sync.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: isDark
                           ? _DesignTokens.darkMuted
@@ -411,46 +372,56 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             ),
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: Tooltip(
-              message:
-                  'Full snapshot backup is currently unavailable; use monthly export below.',
+          if (signedIn) ...[
+            SizedBox(
+              width: double.infinity,
               child: FilledButton.icon(
-                onPressed: null,
+                onPressed: snapshotState.isLoading
+                    ? null
+                    : () => ref.read(snapshotActionProvider.notifier).run(backup: true),
                 style: _buttonStyle(),
                 icon: const Icon(Icons.cloud_upload_outlined),
                 label: const Text('Back up all data'),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: Tooltip(
-              message:
-                  'Full snapshot sync is currently unavailable; use monthly restore below.',
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: null,
+                onPressed: snapshotState.isLoading
+                    ? null
+                    : () => ref.read(snapshotActionProvider.notifier).run(backup: false),
                 style: _buttonStyle(),
                 icon: const Icon(Icons.sync_outlined),
                 label: const Text('Sync latest backup'),
               ),
             ),
-          ),
+            if (snapshotState.isLoading) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
+            if (snapshotState.hasError) ...[
+              const SizedBox(height: 12),
+              Text('Backup action failed: ${snapshotState.error}',
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
+            ],
+            if (snapshotState.hasValue && snapshotState.value != null) ...[
+              const SizedBox(height: 12),
+              Text(snapshotState.value!, style: theme.textTheme.bodySmall),
+            ],
+          ] else
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _handleSignIn,
+                style: _buttonStyle(),
+                icon: const Icon(Icons.login_rounded),
+                label: const Text('Connect Google Drive'),
+              ),
+            ),
         ],
       ),
     );
-  }
-
-  /// Moves the selector by [delta] months.
-  void _shiftMonth(int delta) {
-    setState(() {
-      _month = DateTime(_month.year, _month.month + delta, 1);
-      _result = null;
-      _error = null;
-      _hint = null;
-    });
   }
 
   // ---------------------------------------------------------------------------
@@ -489,8 +460,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Sign in with your Google account to archive every month as a '
-            'JSON file. Files are stored in the '
+            'Sign in with your Google account to back up all data as a complete '
+            'snapshot. Files are stored in the '
             '"${GoogleConfig.driveFolderName}" folder in your Drive.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: isDark ? _DesignTokens.darkText : _DesignTokens.lightText,
@@ -536,8 +507,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         ),
         const SizedBox(height: _DesignTokens.spacingMedium),
         _buildSnapshotSyncPreview(),
-        const SizedBox(height: _DesignTokens.spacingMedium),
-        const _ImportCard(signedIn: false),
         const SizedBox(height: _DesignTokens.spacingMedium),
         const _UpdateCard(),
         if (_error != null) ...<Widget>[
@@ -629,103 +598,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     );
   }
 
-  Widget _buildMonthlyExportCard() {
-    final ThemeData theme = Theme.of(context);
-    final bool isDark = theme.brightness == Brightness.dark;
-    final String label = _monthLabel.format(_month);
-
-    return _SettingsPanel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const _SectionHeader(
-            icon: Icons.cloud_upload_outlined,
-            title: 'Monthly Drive Backup',
-            subtitle: 'Export individual monthly JSON backups',
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? _DesignTokens.darkElevated
-                  : const Color(0xFFF9FAFB),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isDark
-                    ? _DesignTokens.darkBorder
-                    : _DesignTokens.lightBorder,
-              ),
-            ),
-            child: Row(
-              children: <Widget>[
-                IconButton(
-                  onPressed: _busy ? null : () => _shiftMonth(-1),
-                  icon: const Icon(Icons.chevron_left),
-                  tooltip: 'Previous month',
-                ),
-                Expanded(
-                  child: Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: isDark
-                          ? _DesignTokens.darkText
-                          : _DesignTokens.lightText,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: _busy || _isCurrentMonth
-                      ? null
-                      : () => _shiftMonth(1),
-                  icon: const Icon(Icons.chevron_right),
-                  tooltip: 'Next month',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Exports every transaction of $label into '
-            '"${GoogleConfig.driveFolderName}" as a JSON file.',
-            textAlign: TextAlign.start,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: isDark
-                  ? _DesignTokens.darkMuted
-                  : _DesignTokens.lightMuted,
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _busy ? null : _handleExport,
-              style: _buttonStyle(),
-              icon: _busy
-                  ? const _ButtonSpinner()
-                  : const Icon(Icons.cloud_upload_outlined),
-              label: Text(
-                _busy ? 'Uploading…' : 'Export $label to Drive',
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _busy ? null : _handleExportAll,
-              style: _buttonStyle(),
-              icon: const Icon(Icons.library_add_check_outlined),
-              label: Text(_progress ?? 'Export every month to Drive'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSignedIn(GoogleSignInAccount user) {
     final ThemeData theme = Theme.of(context);
 
@@ -743,33 +615,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         const SizedBox(height: _DesignTokens.spacingMedium),
         _buildSnapshotSyncPreview(),
         const SizedBox(height: _DesignTokens.spacingMedium),
-        _buildMonthlyExportCard(),
-        const SizedBox(height: _DesignTokens.spacingMedium),
-        const _ImportCard(signedIn: true),
-        const SizedBox(height: _DesignTokens.spacingMedium),
         const _UpdateCard(),
-        if (_result != null) ...<Widget>[
-          const SizedBox(height: _DesignTokens.spacingMedium),
-          _buildResult(_result!),
-        ],
-        if (_batch != null) ...<Widget>[
-          const SizedBox(height: _DesignTokens.spacingMedium),
-          _buildNotice(
-            icon: Icons.check_circle_outline,
-            title: 'Backup complete',
-            message: _batch!,
-            tone: theme.colorScheme.primary,
-          ),
-        ],
-        if (_hint != null) ...<Widget>[
-          const SizedBox(height: _DesignTokens.spacingMedium),
-          _buildNotice(
-            icon: Icons.info_outline,
-            title: 'Nothing to back up',
-            message: _hint!,
-            tone: theme.colorScheme.onSurfaceVariant,
-          ),
-        ],
         if (_error != null) ...<Widget>[
           const SizedBox(height: _DesignTokens.spacingMedium),
           _buildNotice(
@@ -834,71 +680,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
               onPressed: _busy ? null : _handleDisconnect,
               icon: const Icon(Icons.link_off, size: 18),
               label: const Text('Disconnect'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildResult(DriveUploadResult result) {
-    final ThemeData theme = Theme.of(context);
-    final bool isDark = theme.brightness == Brightness.dark;
-    final Color accent =
-        isDark ? _DesignTokens.darkAccent : _DesignTokens.primary;
-
-    return _SettingsPanel(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          _SectionIconTile(
-            icon: Icons.check_circle_outline,
-            color: accent,
-            backgroundColor: accent.withOpacity(0.12),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  result.replacedExisting
-                      ? 'Backup updated in Google Drive'
-                      : 'Backup uploaded to Google Drive',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: isDark
-                        ? _DesignTokens.darkText
-                        : _DesignTokens.lightText,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                SelectableText(
-                  result.fileName,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark
-                        ? _DesignTokens.darkText
-                        : _DesignTokens.lightText,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Folder: ${result.folderName}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark
-                        ? _DesignTokens.darkMuted
-                        : _DesignTokens.lightMuted,
-                  ),
-                ),
-                if (result.webViewLink != null) ...<Widget>[
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    result.webViewLink!,
-                    style: theme.textTheme.bodySmall?.copyWith(color: accent),
-                  ),
-                ],
-              ],
             ),
           ),
         ],
@@ -977,9 +758,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     await _run(
       () async {
         await _service.signOut();
-        if (mounted) {
-          setState(() => _result = null);
-        }
+        if (mounted) ref.invalidate(snapshotActionProvider);
       },
       errorTitle: 'Sign out failed',
     );
@@ -992,9 +771,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     await _run(
       () async {
         await _service.disconnect();
-        if (mounted) {
-          setState(() => _result = null);
-        }
+        if (mounted) ref.invalidate(snapshotActionProvider);
       },
       errorTitle: 'Disconnect failed',
     );
@@ -1031,93 +808,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     return answer ?? false;
   }
 
-  Future<void> _handleExport() async {
-    await _run(() async {
-      final MonthExport export =
-          await ref.read(exportMonthUseCaseProvider).call(_month);
-
-      if (export.transactionCount == 0) {
-        if (mounted) {
-          setState(() {
-            _hint =
-                'There are no transactions in ${export.monthLabel}, so there '
-                'is nothing to back up yet.';
-          });
-        }
-        return;
-      }
-
-      final DriveUploadResult result = await _service.uploadJson(
-        fileName: export.fileName,
-        data: export.json,
-      );
-
-      if (mounted) {
-        setState(() => _result = result);
-      }
-    });
-  }
-
-  Future<void> _handleExportAll() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-      _errorTitle = 'Backup failed';
-      _hint = null;
-      _result = null;
-      _batch = null;
-      _progress = null;
-    });
-
-    int uploaded = 0;
-    int months = 0;
-    try {
-      final ExportMonthUseCase export = ref.read(exportMonthUseCaseProvider);
-      final List<DateTime> all = await export.monthsWithTransactions();
-      months = all.length;
-
-      if (months == 0) {
-        if (mounted) {
-          setState(() => _hint = 'There are no transactions in any month yet, '
-              'so there is nothing to back up.');
-        }
-        return;
-      }
-
-      for (final DateTime month in all) {
-        if (!mounted) return;
-        setState(() => _progress = 'Exporting ${uploaded + 1} of $months...');
-
-        final MonthExport monthExport = await export.call(month);
-        await _service.uploadJson(
-          fileName: monthExport.fileName,
-          data: monthExport.json,
-        );
-        uploaded++;
-      }
-
-      if (mounted) {
-        setState(() => _batch = 'Uploaded $uploaded '
-            '${uploaded == 1 ? 'month' : 'months'} to '
-            '"${GoogleConfig.driveFolderName}", one file per month.');
-      }
-    } on Object catch (error) {
-      if (mounted) {
-        setState(() => _error = uploaded == 0
-            ? _describeError(error)
-            : '${_describeError(error)}\n'
-                '$uploaded of $months months were uploaded before it stopped.');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _progress = null;
-        });
-      }
-    }
-  }
-
   Future<void> _run(
     Future<void> Function() action, {
     String errorTitle = 'Export failed',
@@ -1126,10 +816,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       _busy = true;
       _error = null;
       _errorTitle = errorTitle;
-      _hint = null;
-      _result = null;
-      _batch = null;
-      _progress = null;
     });
 
     try {
@@ -1499,404 +1185,4 @@ class _UpdateText extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Restores transactions from a backup: a file the user picks, or the files
-/// already archived in Drive.
-class _ImportCard extends ConsumerStatefulWidget {
-  const _ImportCard({required this.signedIn});
-
-  final bool signedIn;
-
-  @override
-  ConsumerState<_ImportCard> createState() => _ImportCardState();
-}
-
-class _ImportCardState extends ConsumerState<_ImportCard> {
-  bool _busy = false;
-
-  /// What the last import did, and what went wrong if anything did.
-  String? _summary;
-  String? _error;
-
-  Future<void> _importFile() async {
-    setState(() {
-      _busy = true;
-      _summary = null;
-      _error = null;
-    });
-
-    try {
-      final String? text =
-          await ref.read(filePickerServiceProvider).pickJsonText();
-      // Backing out of the chooser is not a failure: there is nothing to report.
-      if (text == null || !mounted) return;
-
-      final ImportResult result =
-          await ref.read(importMonthUseCaseProvider).call(text);
-      if (!mounted) return;
-      setState(() => _summary = _describeImport(result));
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = _describeImportError(error));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _restoreFromDrive() async {
-    setState(() {
-      _busy = true;
-      _summary = null;
-      _error = null;
-    });
-
-    final List<DriveBackupFile> files;
-    try {
-      files = await ref.read(googleDriveServiceProvider).listBackupFiles();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = _describeImportError(error));
-      return;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-
-    if (!mounted) return;
-    if (files.isEmpty) {
-      setState(() => _summary =
-          'No backups found in the "${GoogleConfig.driveFolderName}" folder in your Drive.');
-      return;
-    }
-
-    final String? outcome = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(_DesignTokens.radiusPanel),
-        ),
-      ),
-      builder: (BuildContext context) => _DriveRestoreSheet(files: files),
-    );
-
-    if (!mounted || outcome == null) return;
-    setState(() => _summary = outcome);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final bool isDark = theme.brightness == Brightness.dark;
-
-    return _SettingsPanel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const _SectionHeader(
-            icon: Icons.settings_backup_restore,
-            title: 'Import a backup',
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Restores transactions from a JSON backup this app exported. Rows '
-            'that are already stored are left as they are, so importing the '
-            'same file twice changes nothing.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: isDark ? _DesignTokens.darkText : _DesignTokens.lightText,
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.tonalIcon(
-              onPressed: _busy ? null : _importFile,
-              style: _buttonStyle(),
-              icon: _busy
-                  ? const _ButtonSpinner()
-                  : const Icon(Icons.folder_open),
-              label: const Text('Choose a backup file'),
-            ),
-          ),
-          if (widget.signedIn) ...<Widget>[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : _restoreFromDrive,
-                style: _buttonStyle(),
-                icon: const Icon(Icons.cloud_download_outlined),
-                label: const Text('Restore from Google Drive'),
-              ),
-            ),
-          ],
-          if (_summary != null) ...<Widget>[
-            const SizedBox(height: 12),
-            _UpdateText(
-              _summary!,
-              tone: isDark ? _DesignTokens.darkAccent : _DesignTokens.primary,
-            ),
-          ],
-          if (_error != null) ...<Widget>[
-            const SizedBox(height: 12),
-            _UpdateText(_error!, tone: theme.colorScheme.error),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// The months found in Drive, with a checkbox each, and the import itself.
-class _DriveRestoreSheet extends ConsumerStatefulWidget {
-  const _DriveRestoreSheet({required this.files});
-
-  final List<DriveBackupFile> files;
-
-  @override
-  ConsumerState<_DriveRestoreSheet> createState() => _DriveRestoreSheetState();
-}
-
-class _DriveRestoreSheetState extends ConsumerState<_DriveRestoreSheet> {
-  static final RegExp _nameStamp = RegExp(r'expense-tracker-(\d{4})-(\d{2})');
-  static final DateFormat _monthLabel = DateFormat('MMMM yyyy');
-
-  late final Set<String> _selected =
-      widget.files.map((DriveBackupFile file) => file.id).toSet();
-
-  bool _busy = false;
-  int _done = 0;
-  String? _failure;
-
-  Future<void> _import() async {
-    setState(() {
-      _busy = true;
-      _failure = null;
-      _done = 0;
-    });
-
-    int months = 0;
-    int imported = 0;
-    int duplicates = 0;
-    int unreadable = 0;
-    int failed = 0;
-
-    final List<DriveBackupFile> chosen = widget.files
-        .where((DriveBackupFile file) => _selected.contains(file.id))
-        .toList();
-
-    for (final DriveBackupFile file in chosen) {
-      try {
-        final String json =
-            await ref.read(googleDriveServiceProvider).downloadJson(file.id);
-        final ImportResult result =
-            await ref.read(importMonthUseCaseProvider).call(json);
-        months++;
-        imported += result.imported;
-        duplicates += result.duplicates;
-        unreadable += result.unreadable;
-      } catch (error) {
-        failed++;
-        _failure ??= _describeImportError(error);
-      }
-      if (!mounted) return;
-      setState(() => _done++);
-    }
-
-    if (!mounted) return;
-
-    if (months == 0 && _failure != null) {
-      Navigator.pop(context, _failure);
-      return;
-    }
-
-    Navigator.pop(
-      context,
-      _describeDriveRestore(
-        months: months,
-        imported: imported,
-        duplicates: duplicates,
-        unreadable: unreadable,
-        failed: failed,
-      ),
-    );
-  }
-
-  String _labelFor(DriveBackupFile file) {
-    final Match? match = _nameStamp.firstMatch(file.name);
-    if (match == null) return file.name;
-
-    final int? year = int.tryParse(match.group(1)!);
-    final int? month = int.tryParse(match.group(2)!);
-    if (year == null || month == null || month < 1 || month > 12) {
-      return file.name;
-    }
-
-    return _monthLabel.format(DateTime(year, month));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final bool allSelected = _selected.length == widget.files.length;
-
-    return PopScope(
-      canPop: !_busy,
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Backups in Google Drive',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Choose the months to restore. Transactions already stored are '
-                'skipped.',
-                style: theme.textTheme.bodySmall,
-              ),
-              const SizedBox(height: 8),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                value: allSelected,
-                onChanged: _busy
-                    ? null
-                    : (bool? value) => setState(() {
-                          _selected.clear();
-                          if (value ?? false) {
-                            _selected.addAll(
-                              widget.files
-                                  .map((DriveBackupFile file) => file.id),
-                            );
-                          }
-                        }),
-                title: const Text('All months'),
-              ),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: widget.files
-                      .map((DriveBackupFile file) => CheckboxListTile(
-                            contentPadding: EdgeInsets.zero,
-                            value: _selected.contains(file.id),
-                            onChanged: _busy
-                                ? null
-                                : (bool? value) => setState(() {
-                                      if (value ?? false) {
-                                        _selected.add(file.id);
-                                      } else {
-                                        _selected.remove(file.id);
-                                      }
-                                    }),
-                            title: Text(_labelFor(file)),
-                            subtitle: Text(
-                              file.modifiedTime == null
-                                  ? file.name
-                                  : '${file.name} · '
-                                      '${DateFormat('d MMM yyyy').format(file.modifiedTime!)}',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ))
-                      .toList(),
-                ),
-              ),
-              if (_failure != null && !_busy) ...<Widget>[
-                const SizedBox(height: 8),
-                _UpdateText(_failure!, tone: theme.colorScheme.error),
-              ],
-              const SizedBox(height: 12),
-              Row(
-                children: <Widget>[
-                  TextButton(
-                    onPressed: _busy ? null : () => Navigator.pop(context),
-                    child: const Text('Close'),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _busy || _selected.isEmpty ? null : _import,
-                      style: _buttonStyle(),
-                      icon: _busy
-                          ? const _ButtonSpinner()
-                          : const Icon(Icons.download),
-                      label: Text(
-                        _busy
-                            ? 'Importing $_done of ${_selected.length}...'
-                            : 'Import ${_selected.length} selected',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// One file's outcome, in words.
-String _describeImport(ImportResult result) {
-  final String month =
-      result.monthLabel.isEmpty ? 'the backup' : result.monthLabel;
-  final StringBuffer summary = StringBuffer(
-    'Imported ${result.imported} ${result.imported == 1 ? 'transaction' : 'transactions'} '
-    'from $month',
-  );
-  if (result.duplicates > 0) {
-    summary.write(', ${result.duplicates} already there');
-  }
-  if (result.unreadable > 0) {
-    summary.write(', ${_unreadableClause(result.unreadable)}');
-  }
-  summary.write('.');
-  return summary.toString();
-}
-
-String _unreadableClause(int unreadable) => unreadable == 1
-    ? 'one row could not be read'
-    : '$unreadable rows could not be read';
-
-/// Several files' outcome, in words.
-String _describeDriveRestore({
-  required int months,
-  required int imported,
-  required int duplicates,
-  required int unreadable,
-  required int failed,
-}) {
-  final StringBuffer summary = StringBuffer(
-    'Imported $imported ${imported == 1 ? 'transaction' : 'transactions'} '
-    'from $months ${months == 1 ? 'month' : 'months'}',
-  );
-  if (duplicates > 0) {
-    summary.write(', $duplicates already there');
-  }
-  if (unreadable > 0) {
-    summary.write(', ${_unreadableClause(unreadable)}');
-  }
-  if (failed > 0) {
-    summary.write(
-      '. $failed ${failed == 1 ? 'file' : 'files'} could not be read',
-    );
-    summary.write('.');
-    return summary.toString();
-  }
-  summary.write('.');
-  return summary.toString();
-}
-
-/// A failure's message, when the failure was raised for the user to read.
-String _describeImportError(Object error) {
-  if (error is ImportException) return error.message;
-  if (error is BackupException) return error.message;
-  return '$error';
 }

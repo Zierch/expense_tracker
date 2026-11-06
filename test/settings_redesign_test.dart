@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
-import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
-import 'package:expense_tracker/domain/usecases/import_month_usecase.dart';
 import 'package:expense_tracker/presentation/pages/backup_page.dart';
 import 'package:expense_tracker/presentation/providers/backup_providers.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
@@ -24,9 +22,6 @@ void main() {
           databaseProvider.overrideWithValue(db),
           googleAccountProvider.overrideWith(
             (Ref ref) => Stream<GoogleSignInAccount?>.value(null),
-          ),
-          importMonthUseCaseProvider.overrideWithValue(
-            ImportMonthUseCase(TransactionRepositoryImpl(db)),
           ),
         ],
         child: const MaterialApp(home: BackupPage()),
@@ -49,26 +44,10 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Sign in with Google'), findsOneWidget);
       expect(find.text('Limited access'), findsOneWidget);
 
-      // Section 3: Backup & Sync (Full Snapshot Preview)
       expect(find.text('Backup & Sync'), findsOneWidget);
-      expect(find.text('Unavailable'), findsOneWidget);
-      expect(find.textContaining('Full snapshot backup and sync are currently unavailable'), findsOneWidget);
-
-      // Snapshot & sync buttons must exist and be disabled
-      final Finder backupAllFinder = find.widgetWithText(FilledButton, 'Back up all data');
-      final Finder syncLatestFinder = find.widgetWithText(OutlinedButton, 'Sync latest backup');
-      expect(backupAllFinder, findsOneWidget);
-      expect(syncLatestFinder, findsOneWidget);
-
-      final FilledButton backupAllBtn = tester.widget<FilledButton>(backupAllFinder);
-      expect(backupAllBtn.onPressed, isNull, reason: 'Full snapshot backup must be disabled');
-
-      final OutlinedButton syncLatestBtn = tester.widget<OutlinedButton>(syncLatestFinder);
-      expect(syncLatestBtn.onPressed, isNull, reason: 'Full snapshot sync must be disabled');
-
-      // Section 4: Import a backup (legacy functional card preserved)
-      expect(find.text('Import a backup'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Choose a backup file'), findsOneWidget);
+      expect(find.text('Sign in with Google to back up or sync.'), findsOneWidget);
+      expect(find.text('Connect Google Drive'), findsOneWidget);
+      expect(find.text('Import a backup'), findsNothing);
 
       // Section 5: App updates
       expect(find.text('App updates'), findsOneWidget);

@@ -27,13 +27,7 @@ import 'package:expense_tracker/data/services/file_picker_service.dart';
 import 'package:expense_tracker/data/services/google_drive_service.dart'
     show BackupException;
 import 'package:expense_tracker/domain/usecases/import_month_usecase.dart';
-import 'package:expense_tracker/presentation/pages/backup_page.dart';
-import 'package:expense_tracker/presentation/providers/backup_providers.dart';
-import 'package:expense_tracker/presentation/providers/providers.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'sqlite_support.dart';
@@ -564,56 +558,6 @@ void main() {
     expect(result.imported, 1);
     expect(result.duplicates, 0);
     expect(await _rowCount(db), 2);
-  });
-
-  sqliteWidgetTest('the card imports the file the chooser hands back',
-      (AppDatabase db, WidgetTester tester) async {
-    const MethodChannel channel = MethodChannel('app.files');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (MethodCall call) async {
-      return _backup(transactions: <Map<String, dynamic>>[
-        _row(note: 'Coffee with the team')
-      ]);
-    });
-    addTearDown(() => TestDefaultBinaryMessengerBinding
-        .instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, null));
-
-    tester.view.physicalSize = const Size(1000, 2400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    await tester.pumpWidget(ProviderScope(
-      overrides: <Override>[
-        databaseProvider.overrideWithValue(db),
-        googleAccountProvider.overrideWith(
-          (Ref ref) => Stream<GoogleSignInAccount?>.value(null),
-        ),
-        importMonthUseCaseProvider.overrideWithValue(
-          ImportMonthUseCase(TransactionRepositoryImpl(db)),
-        ),
-      ],
-      child: const MaterialApp(home: BackupPage()),
-    ));
-    for (int i = 0; i < 6; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-
-    expect(find.text('Import a backup'), findsOneWidget);
-
-    await tester.tap(find.text('Choose a backup file'));
-    for (int i = 0; i < 6; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-
-    expect(find.textContaining('Imported 1 transaction from October 2026'),
-        findsOneWidget);
-    expect(await _rowCount(db), 1);
-
-    // The screen holds live streams; taking it down first is what keeps the
-    // harness from closing the database underneath them.
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump(const Duration(milliseconds: 100));
   });
 
   test('the file picker answers with the file, and refuses in words', () async {

@@ -37,14 +37,14 @@ class SnapshotImportResult {
   int get total => imported + duplicates + unreadable;
 }
 
-/// Reads a complete snapshot (or legacy monthly backup) and writes its rows non-destructively.
+/// Reads a complete snapshot and writes its rows non-destructively.
 class ImportSnapshotUseCase {
   ImportSnapshotUseCase(this._repository);
 
   final TransactionRepository _repository;
 
   /// The highest schemaVersion this build knows how to read.
-  static const int _supportedSchema = 1;
+  static const int _supportedSchema = 2;
 
   /// A snapshot covers all months, up to 100,000 transactions.
   static const int maxTransactions = 100000;
@@ -101,21 +101,8 @@ class ImportSnapshotUseCase {
       duplicates: written.duplicates,
       unreadable: unreadable,
       monthsCount: monthKeys.length,
-      backupType: _detectBackupType(document),
+      backupType: 'snapshot',
     );
-  }
-
-  String _detectBackupType(Map<String, dynamic> document) {
-    final Object? backupType = document['backupType'];
-    if (backupType is String && backupType.toLowerCase() == 'snapshot') {
-      return 'snapshot';
-    }
-    final Object? period = document['period'];
-    if (period is Map<String, dynamic>) {
-      if (period['type'] == 'all') return 'snapshot';
-      if (period['year'] != null && period['month'] != null) return 'monthly';
-    }
-    return 'snapshot';
   }
 
   Map<String, dynamic> _decode(String jsonText) {
@@ -134,7 +121,7 @@ class ImportSnapshotUseCase {
     }
 
     final Object? app = decoded['app'];
-    if (app is String && app != 'Expense Tracker') {
+    if (app != 'Expense Tracker') {
       throw SnapshotImportException(
           'That file was written by "$app", not Expense Tracker.');
     }
@@ -146,6 +133,9 @@ class ImportSnapshotUseCase {
         '$schema, this build reads $_supportedSchema). Update the app and try '
         'again.',
       );
+    }
+    if (schema is! int || schema != _supportedSchema || decoded['backupType'] != 'snapshot') {
+      throw SnapshotImportException('That file is not a supported snapshot.');
     }
 
     return decoded;

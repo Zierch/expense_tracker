@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:expense_tracker/data/services/google_drive_service.dart'
     show BackupException;
@@ -10,7 +11,6 @@ import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:expense_tracker/domain/usecases/export_snapshot_usecase.dart';
 import 'package:expense_tracker/domain/usecases/import_snapshot_usecase.dart';
-import 'package:expense_tracker/domain/usecases/legacy_migration_usecase.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -19,6 +19,53 @@ class _DummyClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     throw UnimplementedError('Unexpected HTTP request: ${request.url}');
   }
+}
+
+class _FakeClient extends http.BaseClient {
+  _FakeClient(this.handler);
+
+  final Future<http.Response> Function(http.BaseRequest request) handler;
+  final List<http.BaseRequest> requests = <http.BaseRequest>[];
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    requests.add(request);
+    final http.Response res = await handler(request);
+    return http.StreamedResponse(
+      Stream<List<int>>.value(res.bodyBytes),
+      res.statusCode,
+      headers: res.headers,
+      contentLength: res.bodyBytes.length,
+    );
+  }
+}
+
+class _FixedRandom implements Random {
+  _FixedRandom(this.bytes);
+
+  final List<int> bytes;
+  int _index = 0;
+
+  @override
+  int nextInt(int max) {
+    final int val = bytes[_index % bytes.length];
+    _index++;
+    return val;
+  }
+
+  @override
+  bool nextBool() => false;
+
+  @override
+  double nextDouble() => 0.0;
+}
+
+http.Response _jsonResponse(dynamic data, {int status = 200}) {
+  return http.Response(
+    jsonEncode(data),
+    status,
+    headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+  );
 }
 
 class _FakeSnapshotDriveService extends SnapshotDriveService {
@@ -241,7 +288,7 @@ String _snapshotJson({
   required List<Map<String, dynamic>> transactions,
   String app = 'Expense Tracker',
   String backupType = 'snapshot',
-  num schemaVersion = 1,
+  num schemaVersion = 2,
   double totalIncome = 1000000.0,
   double totalExpense = 500000.0,
 }) {
@@ -289,24 +336,33 @@ Map<String, dynamic> _row({
 }
 
 SnapshotCoordinator _createCoordinator({
-  required _FakeSnapshotDriveService drive,
+  required SnapshotDriveService drive,
   required _MockTransactionRepository repo,
 }) {
   final ExportSnapshotUseCase exporter = ExportSnapshotUseCase(repo);
   final ImportSnapshotUseCase importer = ImportSnapshotUseCase(repo);
-  final LegacyMigrationUseCase migration = LegacyMigrationUseCase(
-    repository: repo,
-    driveService: drive,
-    exportSnapshotUseCase: exporter,
-  );
-  return SnapshotCoordinator(drive, migration, exporter, importer);
+  return SnapshotCoordinator(drive, exporter, importer);
 }
 
 void main() {
-  group('SnapshotCoordinator - Backup and Migration', () {
-    test('no snapshots triggers legacy migration and uploads prepared snapshot',
+  group('SnapshotCoordinator - Backup', () {
+    test(
+        'backup creates full snapshot schema 2 and uploads to Drive without monthly migration',
         () async {
       final _MockTransactionRepository repo = _MockTransactionRepository();
+      await repo.insertTransaction(TransactionEntity(
+        id: 1,
+        type: 'income',
+        amount: 5000000.0,
+        categoryId: 1,
+        subcategoryId: null,
+        categoryName: 'Salary',
+        subcategoryName: null,
+        note: 'Monthly salary',
+        date: DateTime(2026, 10, 15),
+        createdAt: DateTime(2026, 10, 15),
+      ));
+
       final _FakeSnapshotDriveService drive = _FakeSnapshotDriveService(
         snapshots: const <Map<String, dynamic>>[],
         legacyFiles: const <Map<String, dynamic>>[
@@ -323,9 +379,9 @@ void main() {
               _row(
                 date: '2026-10-15',
                 type: 'income',
-                category: 'Salary',
-                amount: 5000000.0,
-                note: 'Monthly salary',
+                category: 'LegacySalary',
+                amount: 9999999.0,
+                note: 'Should not be imported',
               ),
             ],
           ),
@@ -340,12 +396,14 @@ void main() {
       final String uploadedName = await coordinator.backup();
 
       expect(uploadedName, 'uploaded-snapshot.json');
-      expect(repo.importCalls, 1);
+      // Monthly migration is discarded: 0 import calls, local transactions unchanged
+      expect(repo.importCalls, 0);
       expect(repo.transactions, hasLength(1));
       expect(repo.transactions.first.categoryName, 'Salary');
       expect(repo.transactions.first.amount, 5000000.0);
       expect(drive.uploadSnapshotCalled, isTrue);
-      expect(drive.downloadedFileIds, <String>['legacy-1']);
+      // Legacy files on Drive were NOT downloaded
+      expect(drive.downloadedFileIds, isEmpty);
       expect(drive.lastUploadedBytes, isNotNull);
 
       final Map<String, dynamic> uploadedJson = jsonDecode(
@@ -353,14 +411,14 @@ void main() {
       ) as Map<String, dynamic>;
       expect(uploadedJson['app'], 'Expense Tracker');
       expect(uploadedJson['backupType'], 'snapshot');
-      expect(uploadedJson['schemaVersion'], 1);
+      expect(uploadedJson['schemaVersion'], 2);
       final List<dynamic> txs = uploadedJson['transactions'] as List<dynamic>;
       expect(txs, hasLength(1));
       expect(txs.first['category'], 'Salary');
     });
 
     test(
-        'existing snapshots skip legacy migration and uploads local repository snapshot',
+        'existing snapshots skip monthly migration and uploads local repository snapshot',
         () async {
       final _MockTransactionRepository repo = _MockTransactionRepository();
       await repo.insertTransaction(TransactionEntity(
@@ -409,7 +467,6 @@ void main() {
       final String uploadedName = await coordinator.backup();
 
       expect(uploadedName, 'uploaded-snapshot.json');
-      // Migration skipped to avoid resurrecting deletions
       expect(repo.importCalls, 0);
       expect(repo.transactions, hasLength(1));
       expect(repo.transactions.first.categoryName, 'LocalExpense');
@@ -420,6 +477,7 @@ void main() {
         utf8.decode(drive.lastUploadedBytes!),
       ) as Map<String, dynamic>;
       expect(uploadedJson['backupType'], 'snapshot');
+      expect(uploadedJson['schemaVersion'], 2);
       final List<dynamic> txs = uploadedJson['transactions'] as List<dynamic>;
       expect(txs, hasLength(1));
       expect(txs.first['category'], 'LocalExpense');
@@ -458,27 +516,109 @@ void main() {
     });
 
     test(
-        'failed upload during legacy migration preserves imported data and retry succeeds idempotently',
+        'backup integrates with existing Drive service retaining latest 3 versions and preserving remote legacy files',
         () async {
       final _MockTransactionRepository repo = _MockTransactionRepository();
-      final _FakeSnapshotDriveService drive = _FakeSnapshotDriveService(
-        snapshots: const <Map<String, dynamic>>[],
-        legacyFiles: const <Map<String, dynamic>>[
-          <String, dynamic>{
-            'id': 'legacy-1',
-            'name': 'expense-tracker-2026-10.json',
-          },
-        ],
-        fileContents: <String, String>{
-          'legacy-1': _monthlyJson(
-            year: 2026,
-            month: 10,
-            transactions: <Map<String, dynamic>>[
-              _row(date: '2026-10-15', amount: 150000.0, note: 'Market'),
-            ],
-          ),
-        },
-        failUpload: true,
+      await repo.insertTransaction(TransactionEntity(
+        id: 1,
+        type: 'income',
+        amount: 3000000.0,
+        categoryId: 1,
+        subcategoryId: null,
+        categoryName: 'Consulting',
+        subcategoryName: null,
+        note: 'Client project',
+        date: DateTime(2026, 11, 6),
+        createdAt: DateTime(2026, 11, 6),
+      ));
+
+      final List<String> deletedIds = <String>[];
+      List<int>? capturedPayload;
+
+      final _FakeClient client = _FakeClient((http.BaseRequest req) async {
+        final Uri url = req.url;
+        if (req.method == 'GET' && url.path == '/drive/v3/files') {
+          final String q = url.queryParameters['q'] ?? '';
+          if (q.contains("mimeType = 'application/vnd.google-apps.folder'")) {
+            return _jsonResponse(<String, dynamic>{
+              'files': <dynamic>[
+                <String, dynamic>{'id': 'folder-1', 'name': 'Expense Tracker'},
+              ],
+            });
+          }
+          if (q.contains("'folder-1' in parents")) {
+            return _jsonResponse(<String, dynamic>{
+              'files': <dynamic>[
+                <String, dynamic>{
+                  'id': 'new-file-id',
+                  'name': 'expense-tracker-snapshot-20261106T120000-0102030405060708.json',
+                  'mimeType': 'application/json',
+                  'parents': <dynamic>['folder-1'],
+                  'ownedByMe': true,
+                  'createdTime': '2026-11-06T12:00:00.000Z',
+                },
+                <String, dynamic>{
+                  'id': 'snap-2',
+                  'name': 'expense-tracker-snapshot-20261105T120000-0000000000000002.json',
+                  'mimeType': 'application/json',
+                  'parents': <dynamic>['folder-1'],
+                  'ownedByMe': true,
+                  'createdTime': '2026-11-05T12:00:00.000Z',
+                },
+                <String, dynamic>{
+                  'id': 'snap-3',
+                  'name': 'expense-tracker-snapshot-20261104T120000-0000000000000003.json',
+                  'mimeType': 'application/json',
+                  'parents': <dynamic>['folder-1'],
+                  'ownedByMe': true,
+                  'createdTime': '2026-11-04T12:00:00.000Z',
+                },
+                <String, dynamic>{
+                  'id': 'snap-4',
+                  'name': 'expense-tracker-snapshot-20261103T120000-0000000000000004.json',
+                  'mimeType': 'application/json',
+                  'parents': <dynamic>['folder-1'],
+                  'ownedByMe': true,
+                  'createdTime': '2026-11-03T12:00:00.000Z',
+                },
+                // Legacy monthly file - existing remote file that MUST NOT be deleted
+                <String, dynamic>{
+                  'id': 'legacy-remote-1',
+                  'name': 'expense-tracker-2026-10.json',
+                  'mimeType': 'application/json',
+                  'parents': <dynamic>['folder-1'],
+                  'ownedByMe': true,
+                  'createdTime': '2026-10-31T12:00:00.000Z',
+                },
+              ],
+            });
+          }
+        } else if (req.method == 'POST' && url.path == '/upload/drive/v3/files') {
+          if (req is http.Request) {
+            final String text = utf8.decode(req.bodyBytes);
+            const String marker = 'Content-Type: application/json\r\n\r\n';
+            final int secondMarker = text.indexOf(marker, text.indexOf(marker) + marker.length);
+            if (secondMarker != -1) {
+              final int payloadStart = secondMarker + marker.length;
+              final int payloadEnd = text.lastIndexOf('\r\n--');
+              capturedPayload = utf8.encode(text.substring(payloadStart, payloadEnd));
+            }
+          }
+          return _jsonResponse(<String, dynamic>{'id': 'new-file-id'});
+        } else if (req.method == 'GET' && url.path == '/drive/v3/files/new-file-id') {
+          return http.Response.bytes(capturedPayload!, 200);
+        } else if (req.method == 'DELETE' && url.path == '/drive/v3/files/snap-4') {
+          deletedIds.add('snap-4');
+          return http.Response('', 204);
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final SnapshotDriveService drive = SnapshotDriveService(
+        client: client,
+        headers: () async => <String, String>{'Authorization': 'Bearer test-token'},
+        clock: () => DateTime.utc(2026, 11, 6, 12, 0, 0),
+        random: _FixedRandom(<int>[1, 2, 3, 4, 5, 6, 7, 8]),
       );
 
       final SnapshotCoordinator coordinator = _createCoordinator(
@@ -486,21 +626,52 @@ void main() {
         repo: repo,
       );
 
-      // First backup fails at upload step after migration execution
-      await expectLater(
-        coordinator.backup(),
-        throwsA(isA<BackupException>()),
-      );
-      expect(repo.importCalls, 1);
-      expect(repo.transactions, hasLength(1));
-
-      // Retry backup with upload restored: imports 0 duplicates and uploads snapshot successfully
-      drive.failUpload = false;
       final String uploadedName = await coordinator.backup();
-      expect(uploadedName, 'uploaded-snapshot.json');
-      expect(repo.importCalls, 2);
-      expect(repo.transactions, hasLength(1)); // No duplicate rows created
+      expect(uploadedName, 'expense-tracker-snapshot-20261106T120000-0102030405060708.json');
+
+      // 3-version safety: kept latest 3 owned snapshots (new-file-id, snap-2, snap-3), pruned 4th (snap-4)
+      expect(deletedIds, <String>['snap-4']);
+      // Remote legacy monthly file was NOT deleted
+      expect(deletedIds.contains('legacy-remote-1'), isFalse);
+
+      // Verify uploaded snapshot payload is schema 2
+      expect(capturedPayload, isNotNull);
+      final Map<String, dynamic> decoded =
+          jsonDecode(utf8.decode(capturedPayload!)) as Map<String, dynamic>;
+      expect(decoded['app'], 'Expense Tracker');
+      expect(decoded['backupType'], 'snapshot');
+      expect(decoded['schemaVersion'], 2);
+      final List<dynamic> txs = decoded['transactions'] as List<dynamic>;
+      expect(txs, hasLength(1));
+      expect(txs.first['category'], 'Consulting');
+    });
+
+    test(
+        'coordinator supports legacy 4-argument constructor without performing migration',
+        () async {
+      final _MockTransactionRepository repo = _MockTransactionRepository();
+      await repo.insertTransaction(TransactionEntity(
+        id: 1,
+        type: 'income',
+        amount: 250000.0,
+        categoryId: 1,
+        subcategoryId: null,
+        categoryName: 'Freelance',
+        subcategoryName: null,
+        note: 'Contract work',
+        date: DateTime(2026, 11, 2),
+        createdAt: DateTime(2026, 11, 2),
+      ));
+      final _FakeSnapshotDriveService drive = _FakeSnapshotDriveService();
+      final ExportSnapshotUseCase exporter = ExportSnapshotUseCase(repo);
+      final ImportSnapshotUseCase importer = ImportSnapshotUseCase(repo);
+      final SnapshotCoordinator coordinator =
+          SnapshotCoordinator(drive, exporter, importer);
+
+      final String uploaded = await coordinator.backup();
+      expect(uploaded, 'uploaded-snapshot.json');
       expect(drive.uploadSnapshotCalled, isTrue);
+      expect(repo.importCalls, 0);
     });
   });
 
@@ -521,7 +692,7 @@ void main() {
         throwsA(isA<BackupException>().having(
           (BackupException e) => e.message,
           'message',
-          contains('No snapshot found. Back up all data to migrate older backups first.'),
+          contains('No snapshot found.'),
         )),
       );
 
@@ -631,7 +802,40 @@ void main() {
         ],
         fileContents: <String, String>{
           'snap-1': _snapshotJson(
-            schemaVersion: 2,
+            schemaVersion: 3,
+            transactions: <Map<String, dynamic>>[_row()],
+          ),
+        },
+      );
+
+      final SnapshotCoordinator coordinator = _createCoordinator(
+        drive: drive,
+        repo: repo,
+      );
+
+      expect(
+        () => coordinator.sync(),
+        throwsA(isA<BackupException>().having(
+          (BackupException e) => e.message,
+          'message',
+          contains('Latest snapshot is invalid or unsupported. No data was imported.'),
+        )),
+      );
+
+      expect(repo.importCalls, 0);
+      expect(repo.transactions, isEmpty);
+    });
+
+    test('sync throws and does not write when latest snapshot has legacy schemaVersion 1',
+        () async {
+      final _MockTransactionRepository repo = _MockTransactionRepository();
+      final _FakeSnapshotDriveService drive = _FakeSnapshotDriveService(
+        snapshots: const <Map<String, dynamic>>[
+          <String, dynamic>{'id': 'snap-1', 'name': 'snapshot.json'},
+        ],
+        fileContents: <String, String>{
+          'snap-1': _snapshotJson(
+            schemaVersion: 1,
             transactions: <Map<String, dynamic>>[_row()],
           ),
         },
@@ -780,6 +984,68 @@ void main() {
       // Subsequent operation after completion succeeds
       final SnapshotImportResult followUp = await coordinator.sync();
       expect(followUp.duplicates, 1);
+    });
+
+    test(
+        'sync imports latest snapshot when multiple snapshot versions exist and ignores legacy files',
+        () async {
+      final _MockTransactionRepository repo = _MockTransactionRepository();
+      final _FakeSnapshotDriveService drive = _FakeSnapshotDriveService(
+        snapshots: const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'snap-latest',
+            'name': 'expense-tracker-snapshot-20261106T120000-0000000000000001.json',
+            'createdTime': '2026-11-06T12:00:00.000Z',
+          },
+          <String, dynamic>{
+            'id': 'snap-older',
+            'name': 'expense-tracker-snapshot-20261105T120000-0000000000000002.json',
+            'createdTime': '2026-11-05T12:00:00.000Z',
+          },
+          <String, dynamic>{
+            'id': 'snap-oldest',
+            'name': 'expense-tracker-snapshot-20261104T120000-0000000000000003.json',
+            'createdTime': '2026-11-04T12:00:00.000Z',
+          },
+        ],
+        legacyFiles: const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'legacy-remote',
+            'name': 'expense-tracker-2026-10.json',
+          },
+        ],
+        fileContents: <String, String>{
+          'snap-latest': _snapshotJson(
+            transactions: <Map<String, dynamic>>[
+              _row(date: '2026-11-06', amount: 500000.0, note: 'Latest'),
+            ],
+          ),
+          'snap-older': _snapshotJson(
+            transactions: <Map<String, dynamic>>[
+              _row(date: '2026-11-05', amount: 200000.0, note: 'Older'),
+            ],
+          ),
+          'snap-oldest': _snapshotJson(
+            transactions: <Map<String, dynamic>>[
+              _row(date: '2026-11-04', amount: 100000.0, note: 'Oldest'),
+            ],
+          ),
+        },
+      );
+
+      final SnapshotCoordinator coordinator = _createCoordinator(
+        drive: drive,
+        repo: repo,
+      );
+
+      final SnapshotImportResult result = await coordinator.sync();
+      expect(result.imported, 1);
+      expect(repo.transactions, hasLength(1));
+      expect(repo.transactions.first.amount, 500000.0);
+      expect(repo.transactions.first.note, 'Latest');
+
+      // Only the latest snapshot file was downloaded; older snapshots and legacy files were untouched
+      expect(drive.downloadedFileIds, <String>['snap-latest']);
     });
   });
 }

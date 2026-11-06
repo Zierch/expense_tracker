@@ -14,7 +14,7 @@ import 'sqlite_support.dart';
 String _buildSnapshotJson({
   required List<Map<String, dynamic>> transactions,
   String app = 'Expense Tracker',
-  num schemaVersion = 1,
+  num schemaVersion = 2,
   String? backupType = 'snapshot',
 }) {
   return const JsonEncoder.withIndent('  ').convert(<String, dynamic>{
@@ -122,7 +122,7 @@ void main() {
 
       final Map<String, dynamic> json = result.json;
       expect(json['app'], 'Expense Tracker');
-      expect(json['schemaVersion'], 1);
+      expect(json['schemaVersion'], 2);
       expect(json['backupType'], 'snapshot');
       expect(json['currency'], 'IDR');
       expect(json['exportedAt'], '2026-11-06T12:00:00');
@@ -453,7 +453,7 @@ void main() {
       );
 
       final String newerSchema = _buildSnapshotJson(
-        schemaVersion: 2,
+        schemaVersion: 3,
         transactions: <Map<String, dynamic>>[_row()],
       );
       await expectLater(
@@ -467,7 +467,7 @@ void main() {
         ),
       );
 
-      const String noTransactions = '{"app":"Expense Tracker","schemaVersion":1}';
+      const String noTransactions = '{"app":"Expense Tracker","schemaVersion":2,"backupType":"snapshot"}';
       await expectLater(
         importer(noTransactions),
         throwsA(
@@ -480,48 +480,18 @@ void main() {
       );
     });
 
-    sqliteTest('supports legacy monthly backup JSON format seamlessly',
+    sqliteTest('rejects stale or malformed snapshot metadata without writes',
         (AppDatabase db) async {
-      final ImportSnapshotUseCase importer =
-          ImportSnapshotUseCase(TransactionRepositoryImpl(db));
-
-      final String legacyMonthly = const JsonEncoder.withIndent('  ').convert(
-        <String, dynamic>{
-          'app': 'Expense Tracker',
-          'schemaVersion': 1,
-          'currency': 'IDR',
-          'exportedAt': '2026-10-31T20:00:00',
-          'period': <String, dynamic>{
-            'year': 2026,
-            'month': 10,
-            'startDate': '2026-10-01',
-            'endDate': '2026-10-31',
-          },
-          'summary': <String, dynamic>{
-            'totalIncome': 0.0,
-            'totalExpense': 250000.0,
-            'balance': -250000.0,
-            'incomeByCategory': <Map<String, dynamic>>[],
-            'expenseByCategory': <Map<String, dynamic>>[],
-          },
-          'transactions': <Map<String, dynamic>>[
-            _row(
-              date: '2026-10-15',
-              amount: 250000.0,
-              note: 'Legacy monthly row',
-            ),
-          ],
-        },
-      );
-
-      final SnapshotImportResult result = await importer(legacyMonthly);
-
-      expect(result.imported, 1);
-      expect(result.duplicates, 0);
-      expect(result.unreadable, 0);
-      expect(result.monthsCount, 1);
-      expect(result.backupType, 'monthly');
-      expect(await _rowCount(db), 1);
+      final importer = ImportSnapshotUseCase(TransactionRepositoryImpl(db));
+      for (final document in <Map<String, dynamic>>[
+        {'app': 'Expense Tracker', 'schemaVersion': 1, 'backupType': 'snapshot', 'transactions': [_row()]},
+        {'app': 'Expense Tracker', 'schemaVersion': 2, 'backupType': 'monthly', 'transactions': [_row()]},
+        {'app': 'Expense Tracker', 'backupType': 'snapshot', 'transactions': [_row()]},
+        {'schemaVersion': 2, 'backupType': 'snapshot', 'transactions': [_row()]},
+      ]) {
+        await expectLater(importer(jsonEncode(document)), throwsA(isA<SnapshotImportException>()));
+      }
+      expect(await _rowCount(db), 0);
     });
 
     sqliteTest('round-trip export and import between separate databases',
