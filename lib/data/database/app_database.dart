@@ -330,6 +330,44 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// The id of an existing transaction matching these values on [date]'s day,
+  /// excluding any row whose id is in [excludedIds].
+  ///
+  /// Used for 1:1 multiplicity-aware matching during import so that identical
+  /// repeated transactions match preexisting rows one-to-one without collapsing
+  /// repeats or matching newly inserted rows in the same batch.
+  Future<int?> findMatchingTransactionId({
+    required DateTime date,
+    required String type,
+    required double amount,
+    required int categoryId,
+    int? subcategoryId,
+    String? note,
+    Iterable<int> excludedIds = const [],
+  }) async {
+    final DateTime dayStart = DateTime(date.year, date.month, date.day);
+    final DateTime dayEnd = DateTime(date.year, date.month, date.day + 1);
+
+    final query = select(transactions)
+      ..where((t) =>
+          t.date.isBiggerOrEqualValue(dayStart) &
+          t.date.isSmallerThanValue(dayEnd) &
+          t.type.equals(type) &
+          t.amount.equals(amount) &
+          t.categoryId.equals(categoryId) &
+          (subcategoryId == null
+              ? t.subcategoryId.isNull()
+              : t.subcategoryId.equals(subcategoryId)) &
+          (note == null ? t.note.isNull() : t.note.equals(note)));
+
+    if (excludedIds.isNotEmpty) {
+      query.where((t) => t.id.isNotIn(excludedIds));
+    }
+
+    final row = await (query..limit(1)).getSingleOrNull();
+    return row?.id;
+  }
+
   /// Whether a row with these exact values is already stored on [date]'s day.
   ///
   /// The backup carries the ids the rows had in the install that wrote it, and
@@ -352,24 +390,18 @@ class AppDatabase extends _$AppDatabase {
     required int categoryId,
     int? subcategoryId,
     String? note,
+    Iterable<int> excludedIds = const [],
   }) async {
-    final DateTime dayStart = DateTime(date.year, date.month, date.day);
-    final DateTime dayEnd = DateTime(date.year, date.month, date.day + 1);
-
-    final query = select(transactions)
-      ..where((t) =>
-          t.date.isBiggerOrEqualValue(dayStart) &
-          t.date.isSmallerThanValue(dayEnd) &
-          t.type.equals(type) &
-          t.amount.equals(amount) &
-          t.categoryId.equals(categoryId) &
-          (subcategoryId == null
-              ? t.subcategoryId.isNull()
-              : t.subcategoryId.equals(subcategoryId)) &
-          (note == null ? t.note.isNull() : t.note.equals(note)))
-      ..limit(1);
-
-    return (await query.getSingleOrNull()) != null;
+    final int? id = await findMatchingTransactionId(
+      date: date,
+      type: type,
+      amount: amount,
+      categoryId: categoryId,
+      subcategoryId: subcategoryId,
+      note: note,
+      excludedIds: excludedIds,
+    );
+    return id != null;
   }
 
   /// Newest first, and repeatable.

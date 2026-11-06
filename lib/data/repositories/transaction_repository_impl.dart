@@ -93,6 +93,8 @@ class TransactionRepositoryImpl implements TransactionRepository {
     return _database.transaction(() async {
       int imported = 0;
       int duplicates = 0;
+      final Set<int> matchedPreexistingIds = <int>{};
+      final Set<int> insertedIds = <int>{};
 
       for (final ImportTransaction transaction in transactions) {
         final int categoryId = await _database.findOrCreateCategory(
@@ -103,20 +105,23 @@ class TransactionRepositoryImpl implements TransactionRepository {
             : await _database.findOrCreateSubcategory(
                 subcategoryName, categoryId);
 
-        final bool alreadyStored = await _database.hasMatchingTransaction(
+        final int? matchId = await _database.findMatchingTransactionId(
           date: transaction.date,
           type: transaction.type,
           amount: transaction.amount,
           categoryId: categoryId,
           subcategoryId: subcategoryId,
           note: transaction.note,
+          excludedIds: <int>{...matchedPreexistingIds, ...insertedIds},
         );
-        if (alreadyStored) {
+        if (matchId != null) {
+          matchedPreexistingIds.add(matchId);
           duplicates++;
           continue;
         }
 
-        await _database.insertTransaction(TransactionsCompanion.insert(
+        final int newId =
+            await _database.insertTransaction(TransactionsCompanion.insert(
           type: transaction.type,
           amount: transaction.amount,
           categoryId: categoryId,
@@ -129,6 +134,7 @@ class TransactionRepositoryImpl implements TransactionRepository {
           // in the order a clock happened to be read.
           createdAt: Value(transaction.date),
         ));
+        insertedIds.add(newId);
         imported++;
       }
 

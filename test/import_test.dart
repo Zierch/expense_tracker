@@ -168,6 +168,137 @@ void main() {
     expect(await _rowCount(db), 2);
   });
 
+  sqliteTest(
+      'identical repeated transactions in one batch are all imported and idempotent on repeat',
+      (AppDatabase db) async {
+    final ImportMonthUseCase import =
+        ImportMonthUseCase(TransactionRepositoryImpl(db));
+    final String backup = _backup(transactions: <Map<String, dynamic>>[
+      _row(note: 'Coffee'),
+      _row(note: 'Coffee'),
+      _row(note: 'Coffee'),
+    ]);
+
+    final ImportResult first = await import(backup);
+    expect(first.imported, 3);
+    expect(first.duplicates, 0);
+    expect(await _rowCount(db), 3);
+
+    final ImportResult second = await import(backup);
+    expect(second.imported, 0);
+    expect(second.duplicates, 3);
+    expect(await _rowCount(db), 3);
+  });
+
+  sqliteTest(
+      '1:1 multiplicity-aware matching merges non-destructively for local M and imported N',
+      (AppDatabase db) async {
+    final ImportMonthUseCase import =
+        ImportMonthUseCase(TransactionRepositoryImpl(db));
+
+    final int categoryId = (await db.getCategories(type: 'expense')).first.id;
+    final Subcategory food = (await db.getSubcategories(categoryId))
+        .firstWhere((Subcategory s) => s.name == 'Food');
+
+    // Case M < N: local M = 1, imported N = 3
+    await db.insertTransaction(TransactionsCompanion.insert(
+      type: 'expense',
+      amount: 250000,
+      categoryId: categoryId,
+      subcategoryId: Value(food.id),
+      note: const Value('Repeated coffee'),
+      date: DateTime(2026, 10, 4),
+      createdAt: Value(DateTime(2026, 10, 4, 8, 0)),
+    ));
+    expect(await _rowCount(db), 1);
+
+    final String backup3 = _backup(transactions: <Map<String, dynamic>>[
+      _row(note: 'Repeated coffee'),
+      _row(note: 'Repeated coffee'),
+      _row(note: 'Repeated coffee'),
+    ]);
+
+    final ImportResult mergeResult = await import(backup3);
+    expect(mergeResult.imported, 2);
+    expect(mergeResult.duplicates, 1);
+    expect(await _rowCount(db), 3);
+
+    // Idempotent repeat: importing N = 3 again into the DB that now has 3
+    final ImportResult repeatResult = await import(backup3);
+    expect(repeatResult.imported, 0);
+    expect(repeatResult.duplicates, 3);
+    expect(await _rowCount(db), 3);
+  });
+
+  sqliteTest(
+      '1:1 multiplicity-aware matching preserves extra local rows when local M > imported N without deletes',
+      (AppDatabase db) async {
+    final ImportMonthUseCase import =
+        ImportMonthUseCase(TransactionRepositoryImpl(db));
+
+    final int categoryId = (await db.getCategories(type: 'expense')).first.id;
+    final Subcategory food = (await db.getSubcategories(categoryId))
+        .firstWhere((Subcategory s) => s.name == 'Food');
+
+    // Case M > N: local M = 3, imported N = 1
+    for (int i = 0; i < 3; i++) {
+      await db.insertTransaction(TransactionsCompanion.insert(
+        type: 'expense',
+        amount: 250000,
+        categoryId: categoryId,
+        subcategoryId: Value(food.id),
+        note: const Value('Repeated coffee'),
+        date: DateTime(2026, 10, 4),
+        createdAt: Value(DateTime(2026, 10, 4, 8 + i)),
+      ));
+    }
+    expect(await _rowCount(db), 3);
+
+    final String backup1 = _backup(transactions: <Map<String, dynamic>>[
+      _row(note: 'Repeated coffee'),
+    ]);
+
+    final ImportResult result = await import(backup1);
+    expect(result.imported, 0);
+    expect(result.duplicates, 1);
+    expect(await _rowCount(db), 3); // No deletes, local rows preserved
+  });
+
+  sqliteTest(
+      '1:1 multiplicity-aware matching matches exact count when local M == imported N',
+      (AppDatabase db) async {
+    final ImportMonthUseCase import =
+        ImportMonthUseCase(TransactionRepositoryImpl(db));
+
+    final int categoryId = (await db.getCategories(type: 'expense')).first.id;
+    final Subcategory food = (await db.getSubcategories(categoryId))
+        .firstWhere((Subcategory s) => s.name == 'Food');
+
+    // Case M == N: local M = 2, imported N = 2
+    for (int i = 0; i < 2; i++) {
+      await db.insertTransaction(TransactionsCompanion.insert(
+        type: 'expense',
+        amount: 250000,
+        categoryId: categoryId,
+        subcategoryId: Value(food.id),
+        note: const Value('Repeated coffee'),
+        date: DateTime(2026, 10, 4),
+        createdAt: Value(DateTime(2026, 10, 4, 8 + i)),
+      ));
+    }
+    expect(await _rowCount(db), 2);
+
+    final String backup2 = _backup(transactions: <Map<String, dynamic>>[
+      _row(note: 'Repeated coffee'),
+      _row(note: 'Repeated coffee'),
+    ]);
+
+    final ImportResult result = await import(backup2);
+    expect(result.imported, 0);
+    expect(result.duplicates, 2);
+    expect(await _rowCount(db), 2);
+  });
+
   test('a row that fails midway takes the whole month with it, categories too',
       () async {
     final AppDatabase? db =
