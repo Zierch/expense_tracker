@@ -1,7 +1,7 @@
 name: expense_tracker
 description: Offline Android income and expense tracker with optional snapshot backup to your own Google Drive.
 publish_to: 'none'
-version: 1.10.1+21
+version: 1.10.2+22
 repository: https://github.com/Zierch/expense_tracker
 issue_tracker: https://github.com/Zierch/expense_tracker/issues
 
