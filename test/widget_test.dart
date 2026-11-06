@@ -191,6 +191,7 @@ void main() {
       ),
       Brightness.dark,
     ));
+    await tester.pumpAndSettle();
 
     expect(_iconTileDecoration(tester).color, const Color(0xFF29483B));
     expect(_iconWidget(tester).color, const Color(0xFF83DFB7));
@@ -226,6 +227,7 @@ void main() {
       ),
       Brightness.dark,
     ));
+    await tester.pumpAndSettle();
 
     expect(_iconTileDecoration(tester).color, const Color(0xFF353E4C));
     expect(_iconWidget(tester).color, const Color(0xFFC7D2FE));
@@ -261,6 +263,7 @@ void main() {
       ),
       Brightness.dark,
     ));
+    await tester.pumpAndSettle();
 
     expect(_iconTileDecoration(tester).color, const Color(0xFF24473B));
     expect(_iconWidget(tester).color, const Color(0xFF83DFB7));
