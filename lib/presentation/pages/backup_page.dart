@@ -117,13 +117,11 @@ class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.icon,
     required this.title,
-    this.subtitle,
     this.trailing,
   });
 
   final IconData icon;
   final String title;
-  final String? subtitle;
   final Widget? trailing;
 
   @override
@@ -148,17 +146,6 @@ class _SectionHeader extends StatelessWidget {
                       isDark ? _DesignTokens.darkText : _DesignTokens.lightText,
                 ),
               ),
-              if (subtitle != null) ...<Widget>[
-                const SizedBox(height: 2),
-                Text(
-                  subtitle!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark
-                        ? _DesignTokens.darkMuted
-                        : _DesignTokens.lightMuted,
-                  ),
-                ),
-              ],
             ],
           ),
         ),
