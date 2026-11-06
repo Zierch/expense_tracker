@@ -15,24 +15,17 @@ class _FakeClient extends http.BaseClient {
 }
 
 class _FakeGoogleSignInAccount implements GoogleSignInAccount {
-  _FakeGoogleSignInAccount({
-    this.email = 'user@example.com',
-    this.displayName = 'User Name',
-    this.id = 'fake-user-id',
-    this.photoUrl,
-  });
+  @override
+  final String email = 'user@example.com';
 
   @override
-  final String email;
+  final String? displayName = 'User Name';
 
   @override
-  final String? displayName;
+  final String id = 'fake-user-id';
 
   @override
-  final String id;
-
-  @override
-  final String? photoUrl;
+  final String? photoUrl = null;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
