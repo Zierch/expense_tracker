@@ -481,6 +481,9 @@ class GoogleDriveService {
   /// A test replaces the whole Google hand-off — the SDK, the account, the
   /// consent — with the headers it wants, which is the only way to reach the
   /// request this class builds without a real account.
+  /// Authorization for an explicit user-initiated Drive operation.
+  Future<Map<String, String>> snapshotHeaders() => _prepareHeaders();
+
   Future<Map<String, String>> _prepareHeaders() async {
     final Future<Map<String, String>> Function()? injected = _headers;
     if (injected != null) return injected();

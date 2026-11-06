@@ -370,6 +370,17 @@ void main() {
       }
     });
 
+    sqliteTest('strict import rejects invalid rows before writing',
+        (AppDatabase db) async {
+      final importer = ImportSnapshotUseCase(TransactionRepositoryImpl(db));
+      final snapshot = _buildSnapshotJson(transactions: <Map<String, dynamic>>[
+        _row(date: '2026-01-05', amount: 150000.0),
+        _row(amount: -1),
+      ]);
+      await expectLater(importer(snapshot, strict: true), throwsA(isA<SnapshotImportException>()));
+      expect(await _rowCount(db), 0);
+    });
+
     sqliteTest('counts unreadable rows and imports valid neighbors',
         (AppDatabase db) async {
       final ImportSnapshotUseCase importer =

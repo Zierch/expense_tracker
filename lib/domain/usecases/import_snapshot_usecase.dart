@@ -56,7 +56,7 @@ class ImportSnapshotUseCase {
   /// Amount ceiling.
   static const double _maxAmount = 1e12;
 
-  Future<SnapshotImportResult> call(String jsonText) async {
+  Future<SnapshotImportResult> call(String jsonText, {bool strict = false}) async {
     final Map<String, dynamic> document = _decode(jsonText);
     final List<ImportTransaction> rows = <ImportTransaction>[];
     int unreadable = 0;
@@ -82,6 +82,10 @@ class ImportSnapshotUseCase {
         continue;
       }
       rows.add(row);
+    }
+
+    if (strict && unreadable != 0) {
+      throw SnapshotImportException('Backup contains $unreadable invalid transaction(s). No data was imported.');
     }
 
     final Set<int> monthKeys = <int>{};
