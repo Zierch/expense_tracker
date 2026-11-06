@@ -598,9 +598,9 @@ void main() {
           if (req is http.Request) {
             final String text = utf8.decode(req.bodyBytes);
             const String marker = 'Content-Type: application/json\r\n\r\n';
-            final int secondMarker = text.indexOf(marker, text.indexOf(marker) + marker.length);
-            if (secondMarker != -1) {
-              final int payloadStart = secondMarker + marker.length;
+            final int payloadMarker = text.indexOf(marker);
+            if (payloadMarker != -1) {
+              final int payloadStart = payloadMarker + marker.length;
               final int payloadEnd = text.lastIndexOf('\r\n--');
               capturedPayload = utf8.encode(text.substring(payloadStart, payloadEnd));
             }
