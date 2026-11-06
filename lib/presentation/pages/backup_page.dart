@@ -20,16 +20,12 @@ import 'package:expense_tracker/presentation/providers/update_providers.dart';
 /// Semantic color, radius, and spacing tokens from DESIGN.md.
 abstract final class _DesignTokens {
   static const Color primary = Color(0xFF0E5A44);
-  static const Color accent = Color(0xFF10B981);
-  static const Color accentLight = Color(0xFFA7F3D0);
-  static const Color lightBackground = Color(0xFFF4F6F8);
   static const Color lightSurface = Color(0xFFFFFFFF);
   static const Color lightText = Color(0xFF111827);
   static const Color lightMuted = Color(0xFF6B7280);
   static const Color lightBorder = Color(0xFFE5E7EB);
   static const Color lightActivity = Color(0xFFE8F5E9);
 
-  static const Color darkBackground = Color(0xFF101916);
   static const Color darkSurface = Color(0xFF1B2924);
   static const Color darkElevated = Color(0xFF263A30);
   static const Color darkTinted = Color(0xFF244239);
@@ -37,17 +33,13 @@ abstract final class _DesignTokens {
   static const Color darkMuted = Color(0xFFA8BDB3);
   static const Color darkBorder = Color(0xFF31443A);
   static const Color darkAccent = Color(0xFF83DFB7);
-  static const Color darkOnAccent = Color(0xFF10291F);
-  static const Color darkError = Color(0xFFFF8A8A);
 
   static const double radiusPanel = 20.0;
-  static const double radiusCard = 16.0;
   static const double radiusButton = 14.0;
   static const double radiusIcon = 12.0;
 
   static const double spacingScreen = 20.0;
   static const double spacingMedium = 16.0;
-  static const double spacingSmall = 8.0;
 }
 
 /// Standard 14px button style matching DESIGN.md `rounded.button: 14px`.
@@ -93,21 +85,17 @@ class _SettingsPanel extends StatelessWidget {
 class _SectionIconTile extends StatelessWidget {
   const _SectionIconTile({
     required this.icon,
-    this.color,
-    this.backgroundColor,
   });
 
   final IconData icon;
-  final Color? color;
-  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color effectiveBg = backgroundColor ??
-        (isDark ? _DesignTokens.darkTinted : _DesignTokens.lightActivity);
-    final Color effectiveColor = color ??
-        (isDark ? _DesignTokens.darkAccent : _DesignTokens.primary);
+    final Color effectiveBg =
+        isDark ? _DesignTokens.darkTinted : _DesignTokens.lightActivity;
+    final Color effectiveColor =
+        isDark ? _DesignTokens.darkAccent : _DesignTokens.primary;
 
     return Container(
       width: 40,
@@ -129,16 +117,12 @@ class _SectionHeader extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.trailing,
-    this.iconColor,
-    this.iconBgColor,
   });
 
   final IconData icon;
   final String title;
   final String? subtitle;
   final Widget? trailing;
-  final Color? iconColor;
-  final Color? iconBgColor;
 
   @override
   Widget build(BuildContext context) {
@@ -147,11 +131,7 @@ class _SectionHeader extends StatelessWidget {
 
     return Row(
       children: <Widget>[
-        _SectionIconTile(
-          icon: icon,
-          color: iconColor,
-          backgroundColor: iconBgColor,
-        ),
+        _SectionIconTile(icon: icon),
         const SizedBox(width: 14),
         Expanded(
           child: Column(

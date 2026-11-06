@@ -951,34 +951,6 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     );
   }
 
-  Widget _emptyCard(
-    String text, {
-    required Color surfaceColor,
-    required Color borderColor,
-    required Color mutedColor,
-  }) {
-    return Card(
-      elevation: 0,
-      color: surfaceColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: borderColor),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 14,
-              color: mutedColor,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   /// One row per week that holds at least one expense.
   ///
   /// [txns] is deliberately every expense, not the month's: the weeks come from
