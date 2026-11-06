@@ -800,7 +800,12 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              FittedBox(child: Text(bucket.label.split('  ·').first.replaceFirst('Week ', 'W'), style: TextStyle(fontSize: 10, color: mutedColor))),
+                              FittedBox(child: Text(
+                                bucket.label.startsWith('Week ')
+                                    ? bucket.label.split('  ·').first.replaceFirst('Week ', 'W')
+                                    : bucket.label.substring(0, 3),
+                                style: TextStyle(fontSize: 10, color: mutedColor),
+                              )),
                             ],
                           ),
                         ),
