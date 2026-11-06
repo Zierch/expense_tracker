@@ -195,12 +195,37 @@ class SnapshotDriveService {
   }
 
   /// Lists all owned snapshots in the target folder, sorted newest first.
+  ///
+  /// Fails closed if metadata is missing or invalid, or if the listing is ambiguous.
   Future<List<Map<String, dynamic>>> listOwnedSnapshots({String? folderName}) async {
     final Map<String, String> auth = await _headers();
     final String? folder =
         await _findFolder(auth, folderName ?? GoogleConfig.driveFolderName);
     if (folder == null) return <Map<String, dynamic>>[];
     final List<Map<String, dynamic>> rows = await _listFolder(auth, folder);
+
+    // Guard ambiguous listing and detect missing/invalid metadata across snapshot files
+    final Set<String> seenIds = <String>{};
+    for (final Map<String, dynamic> f in rows) {
+      final String fName = f['name'] as String? ?? '';
+      if (_ownedSnapshotName.hasMatch(fName)) {
+        final Object? fId = f['id'];
+        final Object? fTime = f['createdTime'];
+        if (fId is! String ||
+            fId.isEmpty ||
+            fTime is! String ||
+            DateTime.tryParse(fTime) == null) {
+          throw BackupException(
+            'Drive snapshot metadata is missing or invalid.',
+          );
+        }
+        if (!seenIds.add(fId)) {
+          throw BackupException(
+            'Drive snapshot listing is ambiguous.',
+          );
+        }
+      }
+    }
 
     final List<Map<String, dynamic>> snapshots = rows.where((Map<String, dynamic> f) {
       final String name = f['name'] as String? ?? '';
@@ -407,21 +432,31 @@ class SnapshotDriveService {
     Map<String, dynamic> a,
     Map<String, dynamic> b,
   ) {
+    final Object? rawTimeA = a['createdTime'];
+    final Object? rawTimeB = b['createdTime'];
     final DateTime? timeA =
-        DateTime.tryParse(a['createdTime'] as String? ?? '');
+        rawTimeA is String ? DateTime.tryParse(rawTimeA) : null;
     final DateTime? timeB =
-        DateTime.tryParse(b['createdTime'] as String? ?? '');
-    if (timeA != null && timeB != null) {
-      final int timeCmp = timeB.compareTo(timeA);
-      if (timeCmp != 0) return timeCmp;
-    } else if (timeB != null) {
-      return 1;
-    } else if (timeA != null) {
-      return -1;
+        rawTimeB is String ? DateTime.tryParse(rawTimeB) : null;
+    if (timeA == null || timeB == null) {
+      throw BackupException(
+        'Drive snapshot metadata is missing or invalid.',
+      );
     }
-    final String idA = a['id'] as String? ?? '';
-    final String idB = b['id'] as String? ?? '';
-    return idB.compareTo(idA);
+    final int timeCmp = timeB.compareTo(timeA);
+    if (timeCmp != 0) return timeCmp;
+
+    final Object? rawIdA = a['id'];
+    final Object? rawIdB = b['id'];
+    if (rawIdA is! String ||
+        rawIdA.isEmpty ||
+        rawIdB is! String ||
+        rawIdB.isEmpty) {
+      throw BackupException(
+        'Drive snapshot metadata is missing or invalid.',
+      );
+    }
+    return rawIdB.compareTo(rawIdA);
   }
 
   static bool _sameBytes(List<int> a, List<int> b) {

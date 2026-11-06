@@ -88,6 +88,7 @@ class ExportSnapshotUseCase {
             (TransactionEntity transaction) => <String, dynamic>{
               'id': transaction.id,
               'date': _isoDate.format(transaction.date),
+              'createdAt': transaction.createdAt.toUtc().toIso8601String(),
               'type': transaction.type,
               'category': transaction.categoryName,
               'subcategory': transaction.subcategoryName,

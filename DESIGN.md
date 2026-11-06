@@ -93,7 +93,7 @@ Use `dark-error` for destructive actions and `dark-validation` for errors on dar
 
 ## Typography
 
-The target design uses Inter, with regular, semibold and bold weights. It is not currently bundled in the app: verify font licensing and packaging before adding a dependency or font files; use an appropriate platform fallback until then. Sizes above are reference logical pixels, not fixed constraints. Respect system text scaling, wrapping and accessible labels.
+The app bundles Inter as a variable font with its SIL Open Font License in `assets/fonts/OFL.txt`. Sizes above are reference logical pixels, not fixed constraints. Respect system text scaling, wrapping and accessible labels.
 
 ## Layout
 

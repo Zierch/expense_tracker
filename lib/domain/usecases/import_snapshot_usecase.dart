@@ -157,6 +157,10 @@ class ImportSnapshotUseCase {
     if (rawDate is! String) return null;
     final DateTime? parsed = DateTime.tryParse(rawDate);
     if (parsed == null) return null;
+    final Object? rawCreatedAt = entry['createdAt'];
+    if (rawCreatedAt is! String) return null;
+    final DateTime? createdAt = DateTime.tryParse(rawCreatedAt);
+    if (createdAt == null) return null;
 
     final String? category = _readName(entry['category'], _maxNameLength);
     if (category == null) return null;
@@ -171,6 +175,7 @@ class ImportSnapshotUseCase {
 
     return ImportTransaction(
       date: DateTime(parsed.year, parsed.month, parsed.day),
+      createdAt: createdAt,
       type: rawType,
       amount: amount,
       categoryName: category,

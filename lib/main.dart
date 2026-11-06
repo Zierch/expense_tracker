@@ -230,6 +230,7 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
 
     return ThemeData(
       useMaterial3: true,
+      fontFamily: 'Inter',
       colorScheme: scheme,
       scaffoldBackgroundColor: isDark ? _darkBackground : _lightBackground,
       appBarTheme: AppBarTheme(

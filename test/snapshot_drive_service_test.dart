@@ -796,9 +796,12 @@ void main() {
       );
     });
 
-    test('listOwnedSnapshots orders by server createdTime descending with deterministic ID tie-breaking', () async {
+    test('listOwnedSnapshots orders by server createdTime descending with deterministic ID tie-breaking without pruning', () async {
       final _FakeClient client = _FakeClient((http.BaseRequest req) async {
         final Uri url = req.url;
+        if (req.method == 'DELETE') {
+          fail('DELETE must not be called during listOwnedSnapshots');
+        }
         final String q = url.queryParameters['q'] ?? '';
         if (q.contains("mimeType = 'application/vnd.google-apps.folder'")) {
           return _jsonResponse(<String, dynamic>{
@@ -859,6 +862,224 @@ void main() {
       expect(snapshots[1]['id'], 'snap-second-server');
       expect(snapshots[2]['id'], 'snap-tie-b');
       expect(snapshots[3]['id'], 'snap-tie-a');
+    });
+
+    test('listOwnedSnapshots fails closed on missing or invalid createdTime metadata without pruning', () async {
+      final _FakeClient client = _FakeClient((http.BaseRequest req) async {
+        final Uri url = req.url;
+        if (req.method == 'DELETE') {
+          fail('DELETE must not be called when metadata is missing or invalid');
+        }
+        if (req.method == 'GET' && url.path == '/drive/v3/files') {
+          final String q = url.queryParameters['q'] ?? '';
+          if (q.contains("mimeType = 'application/vnd.google-apps.folder'")) {
+            return _jsonResponse(<String, dynamic>{
+              'files': <dynamic>[
+                <String, dynamic>{'id': 'folder-1', 'name': 'Expense Tracker'},
+              ],
+            });
+          }
+          if (q.contains("'folder-1' in parents")) {
+            return _jsonResponse(<String, dynamic>{
+              'files': <dynamic>[
+                <String, dynamic>{
+                  'id': 'snap-valid',
+                  'name': 'expense-tracker-snapshot-20261106T120000-0102030405060708.json',
+                  'mimeType': 'application/json',
+                  'parents': <dynamic>['folder-1'],
+                  'ownedByMe': true,
+                  'createdTime': '2026-11-06T12:00:00.000Z',
+                },
+                // Snapshot with missing createdTime
+                <String, dynamic>{
+                  'id': 'snap-missing-time',
+                  'name': 'expense-tracker-snapshot-20261105T120000-aaaaaaaaaaaaaaaa.json',
+                  'mimeType': 'application/json',
+                  'parents': <dynamic>['folder-1'],
+                  'ownedByMe': true,
+                  'createdTime': null,
+                },
+              ],
+            });
+          }
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final SnapshotDriveService service = SnapshotDriveService(
+        client: client,
+        headers: () async => <String, String>{'Authorization': 'Bearer test-token'},
+      );
+
+      expect(
+        () => service.listOwnedSnapshots(),
+        throwsA(
+          isA<BackupException>().having(
+            (BackupException e) => e.message,
+            'message',
+            contains('metadata is missing or invalid'),
+          ),
+        ),
+      );
+    });
+
+    test('listOwnedSnapshots fails closed on unparseable createdTime timestamp without pruning', () async {
+      final _FakeClient client = _FakeClient((http.BaseRequest req) async {
+        final Uri url = req.url;
+        if (req.method == 'DELETE') {
+          fail('DELETE must not be called when metadata is invalid');
+        }
+        if (req.method == 'GET' && url.path == '/drive/v3/files') {
+          final String q = url.queryParameters['q'] ?? '';
+          if (q.contains("mimeType = 'application/vnd.google-apps.folder'")) {
+            return _jsonResponse(<String, dynamic>{
+              'files': <dynamic>[
+                <String, dynamic>{'id': 'folder-1', 'name': 'Expense Tracker'},
+              ],
+            });
+          }
+          if (q.contains("'folder-1' in parents")) {
+            return _jsonResponse(<String, dynamic>{
+              'files': <dynamic>[
+                <String, dynamic>{
+                  'id': 'snap-invalid-time',
+                  'name': 'expense-tracker-snapshot-20261105T120000-aaaaaaaaaaaaaaaa.json',
+                  'mimeType': 'application/json',
+                  'parents': <dynamic>['folder-1'],
+                  'ownedByMe': true,
+                  'createdTime': 'not-a-valid-timestamp',
+                },
+              ],
+            });
+          }
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final SnapshotDriveService service = SnapshotDriveService(
+        client: client,
+        headers: () async => <String, String>{'Authorization': 'Bearer test-token'},
+      );
+
+      expect(
+        () => service.listOwnedSnapshots(),
+        throwsA(
+          isA<BackupException>().having(
+            (BackupException e) => e.message,
+            'message',
+            contains('metadata is missing or invalid'),
+          ),
+        ),
+      );
+    });
+
+    test('listOwnedSnapshots fails closed on missing or invalid ID metadata without pruning', () async {
+      final _FakeClient client = _FakeClient((http.BaseRequest req) async {
+        final Uri url = req.url;
+        if (req.method == 'DELETE') {
+          fail('DELETE must not be called when ID metadata is missing or invalid');
+        }
+        if (req.method == 'GET' && url.path == '/drive/v3/files') {
+          final String q = url.queryParameters['q'] ?? '';
+          if (q.contains("mimeType = 'application/vnd.google-apps.folder'")) {
+            return _jsonResponse(<String, dynamic>{
+              'files': <dynamic>[
+                <String, dynamic>{'id': 'folder-1', 'name': 'Expense Tracker'},
+              ],
+            });
+          }
+          if (q.contains("'folder-1' in parents")) {
+            return _jsonResponse(<String, dynamic>{
+              'files': <dynamic>[
+                // Snapshot with empty ID
+                <String, dynamic>{
+                  'id': '',
+                  'name': 'expense-tracker-snapshot-20261105T120000-aaaaaaaaaaaaaaaa.json',
+                  'mimeType': 'application/json',
+                  'parents': <dynamic>['folder-1'],
+                  'ownedByMe': true,
+                  'createdTime': '2026-11-05T12:00:00.000Z',
+                },
+              ],
+            });
+          }
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final SnapshotDriveService service = SnapshotDriveService(
+        client: client,
+        headers: () async => <String, String>{'Authorization': 'Bearer test-token'},
+      );
+
+      expect(
+        () => service.listOwnedSnapshots(),
+        throwsA(
+          isA<BackupException>().having(
+            (BackupException e) => e.message,
+            'message',
+            contains('metadata is missing or invalid'),
+          ),
+        ),
+      );
+    });
+
+    test('listOwnedSnapshots fails closed on ambiguous listing with duplicate file IDs without pruning', () async {
+      final _FakeClient client = _FakeClient((http.BaseRequest req) async {
+        final Uri url = req.url;
+        if (req.method == 'DELETE') {
+          fail('DELETE must not be called when listing is ambiguous');
+        }
+        if (req.method == 'GET' && url.path == '/drive/v3/files') {
+          final String q = url.queryParameters['q'] ?? '';
+          if (q.contains("mimeType = 'application/vnd.google-apps.folder'")) {
+            return _jsonResponse(<String, dynamic>{
+              'files': <dynamic>[
+                <String, dynamic>{'id': 'folder-1', 'name': 'Expense Tracker'},
+              ],
+            });
+          }
+          if (q.contains("'folder-1' in parents")) {
+            return _jsonResponse(<String, dynamic>{
+              'files': <dynamic>[
+                <String, dynamic>{
+                  'id': 'dup-id',
+                  'name': 'expense-tracker-snapshot-20261106T120000-0102030405060708.json',
+                  'mimeType': 'application/json',
+                  'parents': <dynamic>['folder-1'],
+                  'ownedByMe': true,
+                  'createdTime': '2026-11-06T12:00:00.000Z',
+                },
+                <String, dynamic>{
+                  'id': 'dup-id',
+                  'name': 'expense-tracker-snapshot-20261105T120000-aaaaaaaaaaaaaaaa.json',
+                  'mimeType': 'application/json',
+                  'parents': <dynamic>['folder-1'],
+                  'ownedByMe': true,
+                  'createdTime': '2026-11-05T12:00:00.000Z',
+                },
+              ],
+            });
+          }
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final SnapshotDriveService service = SnapshotDriveService(
+        client: client,
+        headers: () async => <String, String>{'Authorization': 'Bearer test-token'},
+      );
+
+      expect(
+        () => service.listOwnedSnapshots(),
+        throwsA(
+          isA<BackupException>().having(
+            (BackupException e) => e.message,
+            'message',
+            contains('listing is ambiguous'),
+          ),
+        ),
+      );
     });
 
     test('listFolder handles pagination and requests createdTime in fields', () async {

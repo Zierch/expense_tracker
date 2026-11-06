@@ -52,6 +52,7 @@ Map<String, dynamic> _row({
   return <String, dynamic>{
     'id': id,
     'date': date,
+    'createdAt': '2026-01-15T12:30:45.000Z',
     'type': type,
     'category': category,
     'subcategory': subcategory,
@@ -68,6 +69,7 @@ Future<void> _insertTransaction(
   required String category,
   String? subcategory,
   String? note,
+  DateTime? createdAt,
 }) async {
   final int categoryId = await db.findOrCreateCategory(category, type);
   final int? subcategoryId = subcategory == null
@@ -81,7 +83,7 @@ Future<void> _insertTransaction(
     subcategoryId: Value(subcategoryId),
     note: Value(note),
     date: date,
-    createdAt: Value(date),
+    createdAt: Value(createdAt ?? date),
   ));
 }
 
@@ -494,6 +496,17 @@ void main() {
       expect(await _rowCount(db), 0);
     });
 
+    sqliteTest('rejects malformed creation time before writing any rows',
+        (AppDatabase db) async {
+      final importer = ImportSnapshotUseCase(TransactionRepositoryImpl(db));
+      final bad = _row()..['createdAt'] = 'invalid';
+      await expectLater(
+        importer(_buildSnapshotJson(transactions: [_row(), bad]), strict: true),
+        throwsA(isA<SnapshotImportException>()),
+      );
+      expect(await _rowCount(db), 0);
+    });
+
     sqliteTest('round-trip export and import between separate databases',
         (AppDatabase sourceDb) async {
       await _insertTransaction(
@@ -504,6 +517,7 @@ void main() {
         category: 'Expense',
         subcategory: 'Food',
         note: 'Mid-year meal',
+        createdAt: DateTime.utc(2025, 6, 12, 11, 22, 33),
       );
       await _insertTransaction(
         sourceDb,
@@ -537,6 +551,9 @@ void main() {
         final List<Transaction> destRows =
             await destDb.select(destDb.transactions).get();
         expect(destRows, hasLength(2));
+        final original = await sourceDb.select(sourceDb.transactions).get();
+        expect(destRows.map((row) => row.createdAt.toUtc()).toSet(),
+            original.map((row) => row.createdAt.toUtc()).toSet());
         expect(
           await destDb.getTotalIncome(),
           await sourceDb.getTotalIncome(),

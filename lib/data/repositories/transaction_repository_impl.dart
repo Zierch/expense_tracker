@@ -128,11 +128,7 @@ class TransactionRepositoryImpl implements TransactionRepository {
           subcategoryId: Value(subcategoryId),
           note: Value(transaction.note),
           date: transaction.date,
-          // The backup has no creation time to restore, and the dashboard orders
-          // one day's rows by it, so the row's own date is the honest fill: it
-          // keeps a day's imported rows in the order they were stored rather than
-          // in the order a clock happened to be read.
-          createdAt: Value(transaction.date),
+          createdAt: Value(transaction.createdAt ?? transaction.date),
         ));
         insertedIds.add(newId);
         imported++;

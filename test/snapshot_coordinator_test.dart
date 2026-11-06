@@ -327,6 +327,7 @@ Map<String, dynamic> _row({
   return <String, dynamic>{
     'id': id,
     'date': date,
+    'createdAt': '2026-10-15T12:30:45.000Z',
     'type': type,
     'category': category,
     'subcategory': subcategory,
