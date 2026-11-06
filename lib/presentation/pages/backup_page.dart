@@ -85,17 +85,21 @@ class _SettingsPanel extends StatelessWidget {
 class _SectionIconTile extends StatelessWidget {
   const _SectionIconTile({
     required this.icon,
+    this.color,
+    this.backgroundColor,
   });
 
   final IconData icon;
+  final Color? color;
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color effectiveBg =
-        isDark ? _DesignTokens.darkTinted : _DesignTokens.lightActivity;
-    final Color effectiveColor =
-        isDark ? _DesignTokens.darkAccent : _DesignTokens.primary;
+    final Color effectiveBg = backgroundColor ??
+        (isDark ? _DesignTokens.darkTinted : _DesignTokens.lightActivity);
+    final Color effectiveColor = color ??
+        (isDark ? _DesignTokens.darkAccent : _DesignTokens.primary);
 
     return Container(
       width: 40,
