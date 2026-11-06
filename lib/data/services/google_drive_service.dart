@@ -127,7 +127,6 @@ class GoogleDriveService {
 
   /// Emits the current account straight away, then every change after that.
   Stream<GoogleSignInAccount?> accountChanges() async* {
-    await initialize();
     yield _account;
     yield* _accountController.stream;
   }
