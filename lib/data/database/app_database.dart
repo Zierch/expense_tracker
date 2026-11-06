@@ -47,7 +47,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.withExecutor(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   /// The index behind every range filter in the app.
   ///
@@ -74,6 +74,7 @@ class AppDatabase extends _$AppDatabase {
         // not one of them, so the fresh-install path adds it too.
         await customStatement(dateIndexSql);
         await _seedData();
+        await _seedAdditionalSubcategories();
       },
       onUpgrade: (m, from, to) async {
         if (from < 2) {
@@ -105,6 +106,9 @@ class AppDatabase extends _$AppDatabase {
         if (from < 6) {
           await customStatement(dateIndexSql);
         }
+        if (from < 7) {
+          await _seedAdditionalSubcategories();
+        }
       },
     );
   }
@@ -125,10 +129,6 @@ class AppDatabase extends _$AppDatabase {
     await into(subcategories).insert(SubcategoriesCompanion.insert(
       categoryId: incomeCatId,
       name: 'Freelance',
-    ));
-    await into(subcategories).insert(SubcategoriesCompanion.insert(
-      categoryId: incomeCatId,
-      name: 'Investment',
     ));
     await into(subcategories).insert(SubcategoriesCompanion.insert(
       categoryId: incomeCatId,
@@ -161,6 +161,19 @@ class AppDatabase extends _$AppDatabase {
       categoryId: expenseCatId,
       name: 'Data/Internet Package',
     ));
+  }
+
+  Future<void> _seedAdditionalSubcategories() async {
+    final int income = await findOrCreateCategory('Income', 'income');
+    final int expense = await findOrCreateCategory('Expense', 'expense');
+    await customStatement(
+      'DELETE FROM subcategories WHERE category_id = ? AND name = ? '
+      'AND NOT EXISTS (SELECT 1 FROM transactions WHERE subcategory_id = subcategories.id)',
+      [income, 'Investment'],
+    );
+    await findOrCreateSubcategory('Pocket Money', income);
+    await findOrCreateSubcategory('Coffee Shop', expense);
+    await findOrCreateSubcategory('Fuel', expense);
   }
 
   // Transaction queries
