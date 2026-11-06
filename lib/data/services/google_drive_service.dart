@@ -134,9 +134,16 @@ class GoogleDriveService {
   GoogleSignInAccount? get currentAccount => _account;
 
   /// Emits the current account straight away, then every change after that.
-  Stream<GoogleSignInAccount?> accountChanges() async* {
-    yield _account;
-    yield* _accountController.stream;
+  Stream<GoogleSignInAccount?> accountChanges() {
+    return Stream<GoogleSignInAccount?>.multi((controller) {
+      final subscription = _accountController.stream.listen(
+        controller.add,
+        onError: controller.addError,
+        onDone: controller.close,
+      );
+      controller.add(_account);
+      controller.onCancel = subscription.cancel;
+    });
   }
 
   /// Prepares the Google Sign-In SDK. Safe to call more than once.
