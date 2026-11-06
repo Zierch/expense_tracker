@@ -43,17 +43,24 @@ class _FakeGoogleSignIn implements GoogleSignIn {
   int attemptLightweightAuthenticationCalls = 0;
   bool throwOnSignOut = false;
   bool throwOnDisconnect = false;
+  bool throwOnInitialize = false;
 
   final StreamController<GoogleSignInAuthenticationEvent> _events =
       StreamController<GoogleSignInAuthenticationEvent>.broadcast();
 
   @override
   Future<void> initialize({
-    String? serverClientId,
     String? clientId,
-    List<String> scopes = const <String>[],
+    String? serverClientId,
+    String? nonce,
     String? hostedDomain,
   }) async {
+    if (throwOnInitialize) {
+      throw const GoogleSignInException(
+        code: GoogleSignInExceptionCode.unknownError,
+        description: 'Failed to initialize Google Sign-In',
+      );
+    }
     initialized = true;
   }
 
@@ -73,7 +80,7 @@ class _FakeGoogleSignIn implements GoogleSignIn {
   Future<void> signOut() async {
     if (throwOnSignOut) {
       throw const GoogleSignInException(
-        code: GoogleSignInExceptionCode.serverError,
+        code: GoogleSignInExceptionCode.unknownError,
         description: 'Failed to sign out from Google',
       );
     }
@@ -83,7 +90,7 @@ class _FakeGoogleSignIn implements GoogleSignIn {
   Future<void> disconnect() async {
     if (throwOnDisconnect) {
       throw const GoogleSignInException(
-        code: GoogleSignInExceptionCode.serverError,
+        code: GoogleSignInExceptionCode.unknownError,
         description: 'Failed to disconnect from Google',
       );
     }
@@ -237,6 +244,78 @@ void main() {
 
       final _FakeGoogleSignIn fakeSignIn = _FakeGoogleSignIn()
         ..throwOnDisconnect = true;
+      final _FakeGoogleSignInAccount fakeAccount = _FakeGoogleSignInAccount();
+      final GoogleDriveService service = GoogleDriveService.forTesting(
+        client: _FakeClient(),
+        headers: () async => <String, String>{},
+        googleSignIn: fakeSignIn,
+        signInMemory: memory,
+        initialAccount: fakeAccount,
+      );
+
+      final List<GoogleSignInAccount?> emitted = <GoogleSignInAccount?>[];
+      final StreamSubscription<GoogleSignInAccount?> sub =
+          service.accountChanges().listen(emitted.add);
+
+      await expectLater(
+        service.disconnect(),
+        throwsA(
+          isA<BackupException>().having(
+            (BackupException e) => e.message,
+            'message',
+            allOf(
+              contains('may still be live'),
+              isNot(contains('revoked')),
+              contains('https://myaccount.google.com/permissions'),
+            ),
+          ),
+        ),
+      );
+
+      expect(service.currentAccount, isNull);
+      expect(await memory.hasSignedIn(), isFalse);
+      expect(emitted.last, isNull);
+
+      await sub.cancel();
+    });
+
+    test('signOut clears account and remembered sign-in even when initialize throws error', () async {
+      const GoogleSignInMemory memory = GoogleSignInMemory();
+      await memory.remember();
+
+      final _FakeGoogleSignIn fakeSignIn = _FakeGoogleSignIn()
+        ..throwOnInitialize = true;
+      final _FakeGoogleSignInAccount fakeAccount = _FakeGoogleSignInAccount();
+      final GoogleDriveService service = GoogleDriveService.forTesting(
+        client: _FakeClient(),
+        headers: () async => <String, String>{},
+        googleSignIn: fakeSignIn,
+        signInMemory: memory,
+        initialAccount: fakeAccount,
+      );
+
+      final List<GoogleSignInAccount?> emitted = <GoogleSignInAccount?>[];
+      final StreamSubscription<GoogleSignInAccount?> sub =
+          service.accountChanges().listen(emitted.add);
+
+      await expectLater(
+        service.signOut(),
+        throwsA(isA<BackupException>()),
+      );
+
+      expect(service.currentAccount, isNull);
+      expect(await memory.hasSignedIn(), isFalse);
+      expect(emitted.last, isNull);
+
+      await sub.cancel();
+    });
+
+    test('disconnect clears account and memory even when initialize throws error', () async {
+      const GoogleSignInMemory memory = GoogleSignInMemory();
+      await memory.remember();
+
+      final _FakeGoogleSignIn fakeSignIn = _FakeGoogleSignIn()
+        ..throwOnInitialize = true;
       final _FakeGoogleSignInAccount fakeAccount = _FakeGoogleSignInAccount();
       final GoogleDriveService service = GoogleDriveService.forTesting(
         client: _FakeClient(),

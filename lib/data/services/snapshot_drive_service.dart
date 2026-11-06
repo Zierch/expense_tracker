@@ -12,8 +12,8 @@ import 'package:http/http.dart' as http;
 /// - Generates unique filenames: `expense-tracker-snapshot-yyyyMMddTHHmmss-<nonce>.json`.
 /// - Verifies every upload by reading back content bytes and matching before pruning.
 /// - Retention policy: keeps the latest 3 owned snapshots; NEVER deletes legacy monthly backups.
-/// - Fails closed: if listing is ambiguous, verification fails, or concurrency is uncertain,
-///   pruning is aborted and no files are removed.
+/// - Fails closed: if listing is ambiguous, verification fails, timestamps are ambiguous,
+///   or concurrency is uncertain, pruning is aborted and no files are removed.
 class SnapshotDriveService {
   SnapshotDriveService({
     required http.Client client,
@@ -36,7 +36,7 @@ class SnapshotDriveService {
   static const String _jsonMime = 'application/json';
 
   static final RegExp _ownedSnapshotName = RegExp(
-    r'^expense-tracker-snapshot-\d{8}T\d{6}-[a-f0-9]{16}\.json$',
+    r'^expense-tracker-snapshot-(\d{8}T\d{6})-[a-f0-9]{16}\.json$',
   );
 
   static final RegExp _legacyMonthlyName = RegExp(
@@ -63,7 +63,7 @@ class SnapshotDriveService {
     try {
       final Map<String, String> auth = await _headers();
       final String folder =
-          await _getFolder(auth, folderName ?? GoogleConfig.driveFolderName);
+          await _getOrCreateFolder(auth, folderName ?? GoogleConfig.driveFolderName);
 
       final DateTime now = _clock().toUtc();
       final String stamp =
@@ -117,12 +117,32 @@ class SnapshotDriveService {
         );
       }
 
+      // Prevent pruning if timestamps are ambiguous (duplicate timestamps)
+      final Set<String> seenTimestamps = <String>{};
+      for (final Map<String, dynamic> candidate in snapshotCandidates) {
+        final String fName = candidate['name'] as String? ?? '';
+        final RegExpMatch? match = _ownedSnapshotName.firstMatch(fName);
+        final String? fStamp = match?.group(1);
+        if (fStamp == null || !seenTimestamps.add(fStamp)) {
+          throw BackupException(
+            'Drive snapshot timestamps are ambiguous; aborting retention pruning.',
+          );
+        }
+      }
+
       // Sort newest to oldest by filename (contains ISO date-time stamp)
       snapshotCandidates.sort((Map<String, dynamic> a, Map<String, dynamic> b) {
         final String nameA = a['name'] as String? ?? '';
         final String nameB = b['name'] as String? ?? '';
         return nameB.compareTo(nameA);
       });
+
+      // Prevent pruning on concurrent writers: uploaded snapshot must be the latest
+      if (snapshotCandidates.first['id'] != fileId) {
+        throw BackupException(
+          'A newer snapshot exists or concurrent writer detected; aborting retention pruning.',
+        );
+      }
 
       // Keep latest 3 owned snapshots, prune older ones (index 3+)
       for (final Map<String, dynamic> old in snapshotCandidates.skip(3)) {
@@ -133,7 +153,7 @@ class SnapshotDriveService {
         }
 
         final String? oldId = old['id'] as String?;
-        if (oldId == null || oldId.isEmpty) continue;
+        if (oldId == null || oldId.isEmpty || oldId == fileId) continue;
 
         final http.Response response = await _client.delete(
           Uri.parse('$_drive/files/${Uri.encodeComponent(oldId)}'),
@@ -156,8 +176,9 @@ class SnapshotDriveService {
   /// Lists all owned snapshots in the target folder, sorted newest first.
   Future<List<Map<String, dynamic>>> listOwnedSnapshots({String? folderName}) async {
     final Map<String, String> auth = await _headers();
-    final String folder =
-        await _getFolder(auth, folderName ?? GoogleConfig.driveFolderName);
+    final String? folder =
+        await _findFolder(auth, folderName ?? GoogleConfig.driveFolderName);
+    if (folder == null) return <Map<String, dynamic>>[];
     final List<Map<String, dynamic>> rows = await _listFolder(auth, folder);
 
     final List<Map<String, dynamic>> snapshots = rows.where((Map<String, dynamic> f) {
@@ -179,8 +200,9 @@ class SnapshotDriveService {
   /// Lists legacy monthly backup files in the target folder.
   Future<List<Map<String, dynamic>>> listLegacyMonthlyBackups({String? folderName}) async {
     final Map<String, String> auth = await _headers();
-    final String folder =
-        await _getFolder(auth, folderName ?? GoogleConfig.driveFolderName);
+    final String? folder =
+        await _findFolder(auth, folderName ?? GoogleConfig.driveFolderName);
+    if (folder == null) return <Map<String, dynamic>>[];
     final List<Map<String, dynamic>> rows = await _listFolder(auth, folder);
 
     final List<Map<String, dynamic>> legacy = rows.where((Map<String, dynamic> f) {
@@ -203,18 +225,51 @@ class SnapshotDriveService {
     return _download(auth, fileId);
   }
 
-  Future<String> _getFolder(Map<String, String> auth, String name) async {
+  Future<String?> _findFolder(Map<String, String> auth, String name) async {
     final List<Map<String, dynamic>> rows = await _query(
       auth,
       "name = '${_escape(name)}' and mimeType = '$_folderMime' and trashed = false",
       'files(id,name)',
     );
-    if (rows.length != 1 || rows.single['id'] is! String) {
+    if (rows.length > 1) {
       throw BackupException(
         'Drive backup folder is missing or ambiguous ($name).',
       );
     }
+    if (rows.isEmpty || rows.single['id'] is! String) {
+      return null;
+    }
     return rows.single['id'] as String;
+  }
+
+  Future<String> _getOrCreateFolder(Map<String, String> auth, String name) async {
+    final String? existing = await _findFolder(auth, name);
+    if (existing != null) return existing;
+
+    final http.Response response = await _client.post(
+      Uri.parse('$_drive/files?fields=id'),
+      headers: <String, String>{
+        ...auth,
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode(<String, dynamic>{
+        'name': name,
+        'mimeType': _folderMime,
+        'parents': <String>['root'],
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw BackupException(
+        'Failed to create the "$name" folder in Google Drive (HTTP ${response.statusCode}).',
+      );
+    }
+
+    final Object? id = (jsonDecode(response.body) as Map<String, dynamic>)['id'];
+    if (id is! String || id.isEmpty) {
+      throw BackupException('Folder creation response was ambiguous.');
+    }
+    return id;
   }
 
   Future<List<Map<String, dynamic>>> _listFolder(

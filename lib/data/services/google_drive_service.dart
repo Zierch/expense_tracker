@@ -221,8 +221,8 @@ class GoogleDriveService {
   /// Signs out. The previously granted Drive permission is deliberately kept,
   /// so signing in again does not ask for consent twice.
   Future<void> signOut() async {
-    await initialize();
     try {
+      await initialize();
       await _googleSignIn.signOut();
     } on GoogleSignInException catch (error) {
       throw BackupException(_describeSignInError(error));
@@ -249,8 +249,8 @@ class GoogleDriveService {
   /// live. The error therefore says so rather than reporting a bare failure, and
   /// points at Google's own page for withdrawing the access by hand.
   Future<void> disconnect() async {
-    await initialize();
     try {
+      await initialize();
       await _googleSignIn.disconnect();
     } on GoogleSignInException catch (error) {
       throw BackupException(
