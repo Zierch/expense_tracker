@@ -6,6 +6,7 @@
 /// [TransactionEntity].
 class ImportTransaction {
   final DateTime date;
+  final DateTime? createdAt;
   final String type; // 'income' | 'expense'
   final double amount;
   final String categoryName;
@@ -14,6 +15,7 @@ class ImportTransaction {
 
   const ImportTransaction({
     required this.date,
+    this.createdAt,
     required this.type,
     required this.amount,
     required this.categoryName,

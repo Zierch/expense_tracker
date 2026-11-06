@@ -13,7 +13,7 @@ void main() {
   test('dark theme: the bar matches the dark page, its icons go light', () {
     final SystemUiOverlayStyle style = systemUiStyleFor(Brightness.dark);
 
-    expect(style.systemNavigationBarColor, const Color(0xFF0E1113));
+    expect(style.systemNavigationBarColor, const Color(0xFF101916));
     expect(style.systemNavigationBarIconBrightness, Brightness.light);
     expect(style.systemNavigationBarDividerColor, Colors.transparent);
   });

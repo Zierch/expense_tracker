@@ -93,6 +93,8 @@ class TransactionRepositoryImpl implements TransactionRepository {
     return _database.transaction(() async {
       int imported = 0;
       int duplicates = 0;
+      final Set<int> matchedPreexistingIds = <int>{};
+      final Set<int> insertedIds = <int>{};
 
       for (final ImportTransaction transaction in transactions) {
         final int categoryId = await _database.findOrCreateCategory(
@@ -103,32 +105,32 @@ class TransactionRepositoryImpl implements TransactionRepository {
             : await _database.findOrCreateSubcategory(
                 subcategoryName, categoryId);
 
-        final bool alreadyStored = await _database.hasMatchingTransaction(
+        final int? matchId = await _database.findMatchingTransactionId(
           date: transaction.date,
           type: transaction.type,
           amount: transaction.amount,
           categoryId: categoryId,
           subcategoryId: subcategoryId,
           note: transaction.note,
+          excludedIds: <int>{...matchedPreexistingIds, ...insertedIds},
         );
-        if (alreadyStored) {
+        if (matchId != null) {
+          matchedPreexistingIds.add(matchId);
           duplicates++;
           continue;
         }
 
-        await _database.insertTransaction(TransactionsCompanion.insert(
+        final int newId =
+            await _database.insertTransaction(TransactionsCompanion.insert(
           type: transaction.type,
           amount: transaction.amount,
           categoryId: categoryId,
           subcategoryId: Value(subcategoryId),
           note: Value(transaction.note),
           date: transaction.date,
-          // The backup has no creation time to restore, and the dashboard orders
-          // one day's rows by it, so the row's own date is the honest fill: it
-          // keeps a day's imported rows in the order they were stored rather than
-          // in the order a clock happened to be read.
-          createdAt: Value(transaction.date),
+          createdAt: Value(transaction.createdAt ?? transaction.date),
         ));
+        insertedIds.add(newId);
         imported++;
       }
 

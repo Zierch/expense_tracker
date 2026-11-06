@@ -53,6 +53,37 @@ Future<int> _insertExpense(AppDatabase db, double amount) async {
 }
 
 void main() {
+  test('v6 upgrade adds new categories and retains existing allowance', () async {
+    final Directory dir = Directory.systemTemp.createTempSync('expense_tracker_from_v6');
+    final String path = p.join(dir.path, 'app.sqlite');
+    final AppDatabase? before = openSqliteFileOrSkip(path);
+    if (before == null) return;
+    final income = (await before.getCategories(type: 'income')).first;
+    final expense = (await before.getCategories(type: 'expense')).first;
+    await before.customStatement(
+      "DELETE FROM subcategories WHERE name IN ('Pocket Money', 'Coffee Shop', 'Fuel')",
+    );
+    await before.findOrCreateSubcategory('Allowance', income.id);
+    await before.findOrCreateSubcategory('Investment', income.id);
+    final int rowId = await _insertExpense(before, 90000);
+    await before.customStatement('PRAGMA user_version = 6');
+    await before.close();
+    final AppDatabase? after = openSqliteFileOrSkip(path);
+    if (after == null) return;
+    try {
+      expect((await after.getSubcategories(income.id)).map((s) => s.name),
+          containsAll(['Allowance', 'Pocket Money']));
+      expect((await after.getSubcategories(income.id)).map((s) => s.name),
+          isNot(contains('Investment')));
+      expect((await after.getSubcategories(expense.id)).map((s) => s.name),
+          containsAll(['Coffee Shop', 'Fuel']));
+      expect((await after.getAllTransactions()).single.id, rowId);
+    } finally {
+      await after.close();
+      dir.deleteSync(recursive: true);
+    }
+  });
+
   test('a v4 install loses the two tables and keeps its transactions',
       () async {
     final Directory dir =
@@ -94,7 +125,7 @@ void main() {
       // upgrade starts from the right place.
       final QueryRow version =
           await after.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 6);
+      expect(version.read<int>('user_version'), 7);
     } finally {
       await after.close();
       dir.deleteSync(recursive: true);

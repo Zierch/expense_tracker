@@ -1,5 +1,5 @@
 name: expense_tracker
-description: Offline Android income and expense tracker with optional per-month backup to your own Google Drive.
+description: Offline Android income and expense tracker with optional snapshot backup to your own Google Drive.
 publish_to: 'none'
 version: 1.9.2+19
 repository: https://github.com/Zierch/expense_tracker
@@ -59,3 +59,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Variable.ttf
+  assets:
+    - assets/images/piggy_bank.png
+    - assets/images/receipt_mascot.png

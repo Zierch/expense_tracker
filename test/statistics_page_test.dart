@@ -136,7 +136,152 @@ void main() {
         findsOneWidget,
         reason: 'and the page now describes September, where that expense lives',
       );
+    },
+  );
 
+  sqliteWidgetTest(
+    'switching period filter to week updates total and shows week detail',
+    (AppDatabase db, WidgetTester tester) async {
+      useTallWindow(tester);
+      await _insert(db, amount: 5000, date: DateTime(2026, 9, 29));
+      await _insert(db, amount: 20000, date: DateTime(2026, 10, 15));
+      await _insert(db, amount: 7000, date: DateTime(2026, 11, 1));
+
+      await pumpStatistics(tester, db);
+
+      await tester.tap(find.text('Week'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Total Expense (Weekly)'), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byType(Card).first, matching: find.text(_rupiah(20000))),
+        findsOneWidget,
+        reason: 'only the mid-October expense is in the current week (12-18 Oct)',
+      );
+      expect(find.text('12 Oct – 18 Oct 2026'), findsOneWidget);
+    },
+  );
+
+  sqliteWidgetTest(
+    'switching period filter to year aggregates all transactions for that year',
+    (AppDatabase db, WidgetTester tester) async {
+      useTallWindow(tester);
+      await _insert(db, amount: 5000, date: DateTime(2026, 9, 29));
+      await _insert(db, amount: 20000, date: DateTime(2026, 10, 15));
+      await _insert(db, amount: 7000, date: DateTime(2026, 11, 1));
+
+      await pumpStatistics(tester, db);
+
+      await tester.tap(find.text('Year'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Total Expense (Yearly)'), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byType(Card).first, matching: find.text(_rupiah(32000))),
+        findsOneWidget,
+        reason: 'all three expenses fall into year 2026',
+      );
+      expect(find.text('2026'), findsOneWidget);
+      expect(find.text('Monthly Summary'), findsOneWidget);
+      expect(find.text('September 2026'), findsOneWidget);
+      expect(find.text('October 2026'), findsOneWidget);
+      expect(find.text('November 2026'), findsOneWidget);
+    },
+  );
+
+  sqliteWidgetTest(
+    'switching to income tab updates total, shows weekly buckets and category breakdown',
+    (AppDatabase db, WidgetTester tester) async {
+      useTallWindow(tester);
+      await _insert(db, amount: 5000, date: DateTime(2026, 9, 29), type: 'income');
+      await _insert(db, amount: 20000, date: DateTime(2026, 10, 15), type: 'income');
+      await _insert(db, amount: 7000, date: DateTime(2026, 11, 1), type: 'income');
+
+      await pumpStatistics(tester, db);
+
+      await tester.tap(find.text('Income'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Total Income (Monthly)'), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byType(Card).first, matching: find.text(_rupiah(20000))),
+        findsOneWidget,
+        reason: 'monthly income total counts only October',
+      );
+      expect(
+        find.descendant(
+            of: weekRow('Week 1  ·  28 Sep – 4 Oct'),
+            matching: find.text(_rupiah(5000))),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+            of: weekRow('Week 5  ·  26 Oct – 1 Nov'),
+            matching: find.text(_rupiah(7000))),
+        findsOneWidget,
+      );
+      expect(find.text('Income by Category'), findsOneWidget);
+    },
+  );
+
+  sqliteWidgetTest(
+    'switching period filter to week and income tab shows week detail for income',
+    (AppDatabase db, WidgetTester tester) async {
+      useTallWindow(tester);
+      await _insert(db, amount: 5000, date: DateTime(2026, 9, 29), type: 'income');
+      await _insert(db, amount: 20000, date: DateTime(2026, 10, 15), type: 'income');
+      await _insert(db, amount: 7000, date: DateTime(2026, 11, 1), type: 'income');
+
+      await pumpStatistics(tester, db);
+
+      await tester.tap(find.text('Income'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Week'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Total Income (Weekly)'), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byType(Card).first, matching: find.text(_rupiah(20000))),
+        findsOneWidget,
+        reason: 'only mid-October income is in current week',
+      );
+      expect(find.text('12 Oct – 18 Oct 2026'), findsOneWidget);
+      expect(find.text('Daily Detail'), findsOneWidget);
+    },
+  );
+
+  sqliteWidgetTest(
+    'switching period filter to year and income tab aggregates yearly income',
+    (AppDatabase db, WidgetTester tester) async {
+      useTallWindow(tester);
+      await _insert(db, amount: 5000, date: DateTime(2026, 9, 29), type: 'income');
+      await _insert(db, amount: 20000, date: DateTime(2026, 10, 15), type: 'income');
+      await _insert(db, amount: 7000, date: DateTime(2026, 11, 1), type: 'income');
+
+      await pumpStatistics(tester, db);
+
+      await tester.tap(find.text('Income'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Year'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Total Income (Yearly)'), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byType(Card).first, matching: find.text(_rupiah(32000))),
+        findsOneWidget,
+        reason: 'all three incomes fall into year 2026',
+      );
+      expect(find.text('Monthly Summary'), findsOneWidget);
+      expect(find.text('September 2026'), findsOneWidget);
+      expect(find.text('October 2026'), findsOneWidget);
+      expect(find.text('November 2026'), findsOneWidget);
     },
   );
 }

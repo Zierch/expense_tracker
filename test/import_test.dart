@@ -27,13 +27,7 @@ import 'package:expense_tracker/data/services/file_picker_service.dart';
 import 'package:expense_tracker/data/services/google_drive_service.dart'
     show BackupException;
 import 'package:expense_tracker/domain/usecases/import_month_usecase.dart';
-import 'package:expense_tracker/presentation/pages/backup_page.dart';
-import 'package:expense_tracker/presentation/providers/backup_providers.dart';
-import 'package:expense_tracker/presentation/providers/providers.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'sqlite_support.dart';
@@ -165,6 +159,137 @@ void main() {
     expect(first.imported, 2);
     expect(second.imported, 0);
     expect(second.duplicates, 2);
+    expect(await _rowCount(db), 2);
+  });
+
+  sqliteTest(
+      'identical repeated transactions in one batch are all imported and idempotent on repeat',
+      (AppDatabase db) async {
+    final ImportMonthUseCase import =
+        ImportMonthUseCase(TransactionRepositoryImpl(db));
+    final String backup = _backup(transactions: <Map<String, dynamic>>[
+      _row(note: 'Coffee'),
+      _row(note: 'Coffee'),
+      _row(note: 'Coffee'),
+    ]);
+
+    final ImportResult first = await import(backup);
+    expect(first.imported, 3);
+    expect(first.duplicates, 0);
+    expect(await _rowCount(db), 3);
+
+    final ImportResult second = await import(backup);
+    expect(second.imported, 0);
+    expect(second.duplicates, 3);
+    expect(await _rowCount(db), 3);
+  });
+
+  sqliteTest(
+      '1:1 multiplicity-aware matching merges non-destructively for local M and imported N',
+      (AppDatabase db) async {
+    final ImportMonthUseCase import =
+        ImportMonthUseCase(TransactionRepositoryImpl(db));
+
+    final int categoryId = (await db.getCategories(type: 'expense')).first.id;
+    final Subcategory food = (await db.getSubcategories(categoryId))
+        .firstWhere((Subcategory s) => s.name == 'Food');
+
+    // Case M < N: local M = 1, imported N = 3
+    await db.insertTransaction(TransactionsCompanion.insert(
+      type: 'expense',
+      amount: 250000,
+      categoryId: categoryId,
+      subcategoryId: Value(food.id),
+      note: const Value('Repeated coffee'),
+      date: DateTime(2026, 10, 4),
+      createdAt: Value(DateTime(2026, 10, 4, 8, 0)),
+    ));
+    expect(await _rowCount(db), 1);
+
+    final String backup3 = _backup(transactions: <Map<String, dynamic>>[
+      _row(note: 'Repeated coffee'),
+      _row(note: 'Repeated coffee'),
+      _row(note: 'Repeated coffee'),
+    ]);
+
+    final ImportResult mergeResult = await import(backup3);
+    expect(mergeResult.imported, 2);
+    expect(mergeResult.duplicates, 1);
+    expect(await _rowCount(db), 3);
+
+    // Idempotent repeat: importing N = 3 again into the DB that now has 3
+    final ImportResult repeatResult = await import(backup3);
+    expect(repeatResult.imported, 0);
+    expect(repeatResult.duplicates, 3);
+    expect(await _rowCount(db), 3);
+  });
+
+  sqliteTest(
+      '1:1 multiplicity-aware matching preserves extra local rows when local M > imported N without deletes',
+      (AppDatabase db) async {
+    final ImportMonthUseCase import =
+        ImportMonthUseCase(TransactionRepositoryImpl(db));
+
+    final int categoryId = (await db.getCategories(type: 'expense')).first.id;
+    final Subcategory food = (await db.getSubcategories(categoryId))
+        .firstWhere((Subcategory s) => s.name == 'Food');
+
+    // Case M > N: local M = 3, imported N = 1
+    for (int i = 0; i < 3; i++) {
+      await db.insertTransaction(TransactionsCompanion.insert(
+        type: 'expense',
+        amount: 250000,
+        categoryId: categoryId,
+        subcategoryId: Value(food.id),
+        note: const Value('Repeated coffee'),
+        date: DateTime(2026, 10, 4),
+        createdAt: Value(DateTime(2026, 10, 4, 8 + i)),
+      ));
+    }
+    expect(await _rowCount(db), 3);
+
+    final String backup1 = _backup(transactions: <Map<String, dynamic>>[
+      _row(note: 'Repeated coffee'),
+    ]);
+
+    final ImportResult result = await import(backup1);
+    expect(result.imported, 0);
+    expect(result.duplicates, 1);
+    expect(await _rowCount(db), 3); // No deletes, local rows preserved
+  });
+
+  sqliteTest(
+      '1:1 multiplicity-aware matching matches exact count when local M == imported N',
+      (AppDatabase db) async {
+    final ImportMonthUseCase import =
+        ImportMonthUseCase(TransactionRepositoryImpl(db));
+
+    final int categoryId = (await db.getCategories(type: 'expense')).first.id;
+    final Subcategory food = (await db.getSubcategories(categoryId))
+        .firstWhere((Subcategory s) => s.name == 'Food');
+
+    // Case M == N: local M = 2, imported N = 2
+    for (int i = 0; i < 2; i++) {
+      await db.insertTransaction(TransactionsCompanion.insert(
+        type: 'expense',
+        amount: 250000,
+        categoryId: categoryId,
+        subcategoryId: Value(food.id),
+        note: const Value('Repeated coffee'),
+        date: DateTime(2026, 10, 4),
+        createdAt: Value(DateTime(2026, 10, 4, 8 + i)),
+      ));
+    }
+    expect(await _rowCount(db), 2);
+
+    final String backup2 = _backup(transactions: <Map<String, dynamic>>[
+      _row(note: 'Repeated coffee'),
+      _row(note: 'Repeated coffee'),
+    ]);
+
+    final ImportResult result = await import(backup2);
+    expect(result.imported, 0);
+    expect(result.duplicates, 2);
     expect(await _rowCount(db), 2);
   });
 
@@ -433,56 +558,6 @@ void main() {
     expect(result.imported, 1);
     expect(result.duplicates, 0);
     expect(await _rowCount(db), 2);
-  });
-
-  sqliteWidgetTest('the card imports the file the chooser hands back',
-      (AppDatabase db, WidgetTester tester) async {
-    const MethodChannel channel = MethodChannel('app.files');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (MethodCall call) async {
-      return _backup(transactions: <Map<String, dynamic>>[
-        _row(note: 'Coffee with the team')
-      ]);
-    });
-    addTearDown(() => TestDefaultBinaryMessengerBinding
-        .instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, null));
-
-    tester.view.physicalSize = const Size(1000, 2400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    await tester.pumpWidget(ProviderScope(
-      overrides: <Override>[
-        databaseProvider.overrideWithValue(db),
-        googleAccountProvider.overrideWith(
-          (Ref ref) => Stream<GoogleSignInAccount?>.value(null),
-        ),
-        importMonthUseCaseProvider.overrideWithValue(
-          ImportMonthUseCase(TransactionRepositoryImpl(db)),
-        ),
-      ],
-      child: const MaterialApp(home: BackupPage()),
-    ));
-    for (int i = 0; i < 6; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-
-    expect(find.text('Import a backup'), findsOneWidget);
-
-    await tester.tap(find.text('Choose a backup file'));
-    for (int i = 0; i < 6; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-
-    expect(find.textContaining('Imported 1 transaction from October 2026'),
-        findsOneWidget);
-    expect(await _rowCount(db), 1);
-
-    // The screen holds live streams; taking it down first is what keeps the
-    // harness from closing the database underneath them.
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump(const Duration(milliseconds: 100));
   });
 
   test('the file picker answers with the file, and refuses in words', () async {

@@ -123,6 +123,25 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
     await _loadCategories();
   }
 
+  void _appendAmount(String digits) {
+    final grouped = formatIdrDigits('${idrDigitsOf(_amountController.text)}$digits');
+    if (grouped == null) return;
+    _amountController.value = TextEditingValue(
+      text: grouped,
+      selection: TextSelection.collapsed(offset: grouped.length),
+    );
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && mounted) setState(() => _date = _dateOnly(picked));
+  }
+
   @override
   void dispose() {
     _amountController.dispose();
@@ -132,39 +151,135 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Design tokens from DESIGN.md
+    final Color backgroundColor =
+        isDark ? const Color(0xFF101916) : const Color(0xFFF4F6F8);
+    final Color surfaceColor =
+        isDark ? const Color(0xFF1B2924) : const Color(0xFFFFFFFF);
+    final Color elevatedColor =
+        isDark ? const Color(0xFF263A30) : const Color(0xFFFFFFFF);
+    final Color borderColor =
+        isDark ? const Color(0xFF31443A) : const Color(0xFFE5E7EB);
+    final Color textColor =
+        isDark ? const Color(0xFFEDF7F1) : const Color(0xFF111827);
+    final Color mutedColor =
+        isDark ? const Color(0xFFA8BDB3) : const Color(0xFF6B7280);
+    final Color primaryColor =
+        isDark ? const Color(0xFF83DFB7) : const Color(0xFF0E5A44);
+    final Color onPrimaryColor =
+        isDark ? const Color(0xFF10291F) : const Color(0xFFFFFFFF);
+    final Color activeSegmentColor =
+        isDark ? const Color(0xFF244239) : const Color(0xFFD1FAE5);
+    final Color activeSegmentTextColor =
+        isDark ? const Color(0xFF83DFB7) : const Color(0xFF0E5A44);
+    final Color errorColor =
+        isDark ? const Color(0xFFFF9393) : Theme.of(context).colorScheme.error;
+
     return Scaffold(
+      backgroundColor: backgroundColor,
       appBar: AppBar(
-        title: Text(widget.transactionId == null ? 'Add Transaction' : 'Edit Transaction'),
+        title: Text(
+          widget.transactionId == null ? 'Add Transaction' : 'Edit Transaction',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: textColor,
+          ),
+        ),
+        leading: BackButton(color: textColor),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
       ),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           children: [
-            _buildTypeSelector(),
+            _buildTypeSelector(
+              surfaceColor: surfaceColor,
+              borderColor: borderColor,
+              activeSegmentColor: activeSegmentColor,
+              activeSegmentTextColor: activeSegmentTextColor,
+              mutedColor: mutedColor,
+            ),
             const SizedBox(height: 16),
-            _buildAmountField(),
+            _buildAmountField(
+              isDark: isDark,
+              surfaceColor: surfaceColor,
+              borderColor: borderColor,
+              textColor: textColor,
+              mutedColor: mutedColor,
+              primaryColor: primaryColor,
+              errorColor: errorColor,
+            ),
             const SizedBox(height: 16),
-            _buildCategorySelector(),
+            _buildCategorySelector(
+              surfaceColor: surfaceColor,
+              borderColor: borderColor,
+              textColor: textColor,
+              mutedColor: mutedColor,
+            ),
             const SizedBox(height: 16),
-            if (_subcategories.isNotEmpty) _buildSubcategorySelector(),
-            if (_subcategories.isNotEmpty) const SizedBox(height: 16),
-            _buildDatePicker(),
+            if (_subcategories.isNotEmpty) ...[
+              _buildSubcategorySelector(
+                elevatedColor: elevatedColor,
+                surfaceColor: surfaceColor,
+                borderColor: borderColor,
+                textColor: textColor,
+                mutedColor: mutedColor,
+                primaryColor: primaryColor,
+              ),
+              const SizedBox(height: 16),
+            ],
+            _buildDatePicker(
+              surfaceColor: surfaceColor,
+              borderColor: borderColor,
+              textColor: textColor,
+              mutedColor: mutedColor,
+              primaryColor: primaryColor,
+            ),
             const SizedBox(height: 16),
-            _buildNoteField(),
+            _buildNoteField(
+              surfaceColor: surfaceColor,
+              borderColor: borderColor,
+              textColor: textColor,
+              mutedColor: mutedColor,
+              primaryColor: primaryColor,
+            ),
             const SizedBox(height: 24),
-            _buildSaveButton(),
+            _buildSaveButton(
+              isDark: isDark,
+              primaryColor: primaryColor,
+              onPrimaryColor: onPrimaryColor,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTypeSelector() {
+  Widget _buildTypeSelector({
+    required Color surfaceColor,
+    required Color borderColor,
+    required Color activeSegmentColor,
+    required Color activeSegmentTextColor,
+    required Color mutedColor,
+  }) {
     return SegmentedButton<String>(
       segments: const [
-        ButtonSegment(value: 'expense', label: Text('Expense'), icon: Icon(Icons.arrow_upward)),
-        ButtonSegment(value: 'income', label: Text('Income'), icon: Icon(Icons.arrow_downward)),
+        ButtonSegment(
+          value: 'expense',
+          label: Text('Expense'),
+          icon: Icon(Icons.arrow_upward_rounded),
+        ),
+        ButtonSegment(
+          value: 'income',
+          label: Text('Income'),
+          icon: Icon(Icons.arrow_downward_rounded),
+        ),
       ],
       selected: {_type},
       onSelectionChanged: (set) {
@@ -173,27 +288,105 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
         _selectedSubcategoryId = null;
         _loadCategories();
       },
+      showSelectedIcon: true,
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+          if (states.contains(WidgetState.selected)) {
+            return activeSegmentColor;
+          }
+          return surfaceColor;
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
+          if (states.contains(WidgetState.selected)) {
+            return activeSegmentTextColor;
+          }
+          return mutedColor;
+        }),
+        side: WidgetStatePropertyAll<BorderSide>(
+          BorderSide(color: borderColor),
+        ),
+        shape: WidgetStatePropertyAll<OutlinedBorder>(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        textStyle: const WidgetStatePropertyAll<TextStyle>(
+          TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+        padding: const WidgetStatePropertyAll<EdgeInsetsGeometry>(
+          EdgeInsets.symmetric(vertical: 12),
+        ),
+      ),
     );
   }
 
-  Widget _buildAmountField() {
+  Widget _buildAmountField({
+    required bool isDark,
+    required Color surfaceColor,
+    required Color borderColor,
+    required Color textColor,
+    required Color mutedColor,
+    required Color primaryColor,
+    required Color errorColor,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextFormField(
           controller: _amountController,
-          decoration: const InputDecoration(
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: textColor,
+          ),
+          decoration: InputDecoration(
             labelText: 'Amount',
-            // Decoration, not value: "Rp." cannot be typed over or deleted, and
+            labelStyle: TextStyle(
+              fontSize: 14,
+              color: mutedColor,
+              fontWeight: FontWeight.w500,
+            ),
+            floatingLabelStyle: TextStyle(
+              fontSize: 14,
+              color: primaryColor,
+              fontWeight: FontWeight.w600,
+            ),
+            // Decoration, not value: "Rp. " cannot be typed over or deleted, and
             // it is on screen before the first digit arrives.
             prefixText: 'Rp. ',
+            prefixStyle: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: textColor,
+            ),
             floatingLabelBehavior: FloatingLabelBehavior.always,
-            border: OutlineInputBorder(),
             hintText: '0',
+            hintStyle: TextStyle(color: mutedColor, fontSize: 20),
+            filled: true,
+            fillColor: surfaceColor,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: borderColor),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: borderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: primaryColor, width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: errorColor),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: errorColor, width: 2),
+            ),
+            errorStyle: TextStyle(color: errorColor, fontSize: 12),
           ),
           keyboardType: TextInputType.number,
-          // Grouping and the ceiling both live in the formatter, so the text the
-          // field holds is always the text the amount parses back from.
           inputFormatters: <TextInputFormatter>[IdrAmountInputFormatter()],
           validator: (String? value) {
             final double? amount = parseIdrAmount(value ?? '');
@@ -205,152 +398,307 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _appendAmount('0'),
-                icon: const Icon(Icons.numbers, size: 18),
-                label: const Text('0'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  minimumSize: Size.zero,
-                ),
-              ),
-            ),
+            _buildQuickAmountButton('0', isDark, surfaceColor, borderColor, textColor),
             const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _appendAmount('00'),
-                icon: const Icon(Icons.numbers, size: 18),
-                label: const Text('00'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  minimumSize: Size.zero,
-                ),
-              ),
-            ),
+            _buildQuickAmountButton('00', isDark, surfaceColor, borderColor, textColor),
             const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _appendAmount('000'),
-                icon: const Icon(Icons.numbers, size: 18),
-                label: const Text('000'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  minimumSize: Size.zero,
-                ),
-              ),
-            ),
+            _buildQuickAmountButton('000', isDark, surfaceColor, borderColor, textColor),
           ],
         ),
       ],
     );
   }
 
-  void _appendAmount(String text) {
-    final String? next =
-        formatIdrDigits('${idrDigitsOf(_amountController.text)}$text');
-
-    // Past the ceiling the button does nothing, exactly as typing another digit
-    // would.
-    if (next == null) return;
-
-    _amountController.value = TextEditingValue(
-      text: next,
-      selection: TextSelection.collapsed(offset: next.length),
+  Widget _buildQuickAmountButton(
+    String digits,
+    bool isDark,
+    Color surfaceColor,
+    Color borderColor,
+    Color textColor,
+  ) {
+    return Expanded(
+      child: OutlinedButton.icon(
+        onPressed: () => _appendAmount(digits),
+        icon: Text(
+          '#',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: isDark ? const Color(0xFF83DFB7) : const Color(0xFF10B981),
+          ),
+        ),
+        label: Text(digits),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          minimumSize: Size.zero,
+          backgroundColor: surfaceColor,
+          foregroundColor: textColor,
+          side: BorderSide(color: borderColor),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ),
     );
   }
 
-  Widget _buildCategorySelector() {
+  Widget _buildCategorySelector({
+    required Color surfaceColor,
+    required Color borderColor,
+    required Color textColor,
+    required Color mutedColor,
+  }) {
     String categoryName = _type == 'income' ? 'Income' : 'Expense';
     if (_categories.isNotEmpty) {
       final match = _categories.where((c) => c.id == _selectedCategoryId);
       categoryName = match.isNotEmpty ? match.first.name : _categories.first.name;
     }
-    final hintColor = Theme.of(context).textTheme.bodySmall?.color;
 
     return InputDecorator(
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         labelText: 'Category',
-        border: OutlineInputBorder(),
+        labelStyle: TextStyle(
+          fontSize: 14,
+          color: mutedColor,
+          fontWeight: FontWeight.w500,
+        ),
         helperText: 'Set by the type above',
+        helperStyle: TextStyle(color: mutedColor, fontSize: 12),
+        filled: true,
+        fillColor: surfaceColor,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: borderColor),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(categoryName, style: const TextStyle(fontSize: 16)),
-          Icon(Icons.lock_outline, size: 16, color: hintColor),
+          Text(
+            categoryName,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: textColor,
+            ),
+          ),
+          Icon(Icons.lock_outline_rounded, size: 18, color: mutedColor),
         ],
       ),
     );
   }
 
-  Widget _buildSubcategorySelector() {
+  Widget _buildSubcategorySelector({
+    required Color surfaceColor,
+    required Color elevatedColor,
+    required Color borderColor,
+    required Color textColor,
+    required Color mutedColor,
+    required Color primaryColor,
+  }) {
     return DropdownButtonFormField<int?>(
       value: _selectedSubcategoryId,
-      decoration: const InputDecoration(
+      dropdownColor: elevatedColor,
+      icon: Icon(Icons.keyboard_arrow_down_rounded, color: mutedColor),
+      style: TextStyle(
+        fontSize: 16,
+        color: textColor,
+        fontWeight: FontWeight.w500,
+      ),
+      decoration: InputDecoration(
         labelText: 'Subcategory',
-        border: OutlineInputBorder(),
+        labelStyle: TextStyle(
+          fontSize: 14,
+          color: mutedColor,
+          fontWeight: FontWeight.w500,
+        ),
+        floatingLabelStyle: TextStyle(
+          fontSize: 14,
+          color: primaryColor,
+          fontWeight: FontWeight.w600,
+        ),
+        filled: true,
+        fillColor: surfaceColor,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: primaryColor, width: 2),
+        ),
       ),
       items: [
-        const DropdownMenuItem(value: null, child: Text('None')),
-        ..._subcategories.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))),
+        DropdownMenuItem(
+          value: null,
+          child: Text('None', style: TextStyle(color: textColor)),
+        ),
+        ..._subcategories.map(
+          (s) => DropdownMenuItem(
+            value: s.id,
+            child: Text(s.name, style: TextStyle(color: textColor)),
+          ),
+        ),
       ],
       onChanged: (value) => setState(() => _selectedSubcategoryId = value),
     );
   }
 
-  Widget _buildDatePicker() {
+  Widget _buildDatePicker({
+    required Color surfaceColor,
+    required Color borderColor,
+    required Color textColor,
+    required Color mutedColor,
+    required Color primaryColor,
+  }) {
     return InkWell(
       onTap: _pickDate,
+      borderRadius: BorderRadius.circular(14),
       child: InputDecorator(
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           labelText: 'Date',
-          border: OutlineInputBorder(),
-          suffixIcon: Icon(Icons.calendar_today),
+          labelStyle: TextStyle(
+            fontSize: 14,
+            color: mutedColor,
+            fontWeight: FontWeight.w500,
+          ),
+          floatingLabelStyle: TextStyle(
+            fontSize: 14,
+            color: primaryColor,
+            fontWeight: FontWeight.w600,
+          ),
+          filled: true,
+          fillColor: surfaceColor,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          suffixIcon:
+              Icon(Icons.calendar_today_rounded, size: 20, color: mutedColor),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: borderColor),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: borderColor),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: primaryColor, width: 2),
+          ),
         ),
         child: Text(
           DateFormat('dd MMMM yyyy', 'en_US').format(_date),
-          style: const TextStyle(fontSize: 16),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: textColor,
+          ),
         ),
       ),
     );
   }
 
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null) setState(() => _date = _dateOnly(picked));
-  }
-
-  Widget _buildNoteField() {
+  Widget _buildNoteField({
+    required Color surfaceColor,
+    required Color borderColor,
+    required Color textColor,
+    required Color mutedColor,
+    required Color primaryColor,
+  }) {
     return TextFormField(
       controller: _noteController,
-      decoration: const InputDecoration(
-        labelText: 'Note (optional)',
-        border: OutlineInputBorder(),
-        hintText: 'Add note...',
-      ),
       maxLines: 3,
+      style: TextStyle(
+        fontSize: 15,
+        color: textColor,
+        fontWeight: FontWeight.w400,
+      ),
+      decoration: InputDecoration(
+        labelText: 'Note (optional)',
+        labelStyle: TextStyle(
+          fontSize: 14,
+          color: mutedColor,
+          fontWeight: FontWeight.w500,
+        ),
+        floatingLabelStyle: TextStyle(
+          fontSize: 14,
+          color: primaryColor,
+          fontWeight: FontWeight.w600,
+        ),
+        hintText: 'Add note...',
+        hintStyle: TextStyle(color: mutedColor, fontSize: 15),
+        filled: true,
+        fillColor: surfaceColor,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: primaryColor, width: 2),
+        ),
+      ),
     );
   }
 
-  Widget _buildSaveButton() {
+  Widget _buildSaveButton({
+    required bool isDark,
+    required Color primaryColor,
+    required Color onPrimaryColor,
+  }) {
     // An edit cannot be saved before its row arrives: the values on screen would be the
     // form's defaults rather than the transaction's. Disabled, rather than accepting a tap
     // that quietly does nothing.
     final bool canSave = widget.transactionId == null || _createdAt != null;
 
+    final Color disabledBg = isDark
+        ? const Color(0xFF244239).withOpacity(0.5)
+        : const Color(0xFFE5E7EB);
+    final Color disabledFg = isDark
+        ? const Color(0xFFA8BDB3).withOpacity(0.5)
+        : const Color(0xFF9CA3AF);
+
     return FilledButton.icon(
       onPressed: (_isLoading || !canSave) ? null : _saveTransaction,
       icon: _isLoading
-          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.save),
+          ? SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(onPrimaryColor),
+              ),
+            )
+          : const Icon(Icons.save_rounded, size: 20),
       label: Text(widget.transactionId == null ? 'Save' : 'Update'),
       style: FilledButton.styleFrom(
+        backgroundColor: primaryColor,
+        foregroundColor: onPrimaryColor,
+        disabledBackgroundColor: disabledBg,
+        disabledForegroundColor: disabledFg,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
         padding: const EdgeInsets.symmetric(vertical: 16),
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
@@ -390,8 +738,19 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
       if (mounted) context.pop();
     } catch (e) {
       if (mounted) {
+        final bool isDark = Theme.of(context).brightness == Brightness.dark;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Theme.of(context).colorScheme.error),
+          SnackBar(
+            content: Text(
+              'Error: $e',
+              style: TextStyle(
+                color: isDark ? const Color(0xFF101916) : Colors.white,
+              ),
+            ),
+            backgroundColor: isDark
+                ? const Color(0xFFFF9393)
+                : Theme.of(context).colorScheme.error,
+          ),
         );
       }
     } finally {
