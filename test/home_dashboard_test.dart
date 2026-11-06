@@ -244,10 +244,9 @@ void main() {
   );
 
   sqliteWidgetTest(
-    'the last row clears the button that adds the next one',
+    'the end of the list sits just under the last row, with no dead band',
     (AppDatabase db, WidgetTester tester) async {
-      // Longer than the screen: the FAB only covers a row when the list reaches the
-      // bottom, which is the moment the user is looking at what they last typed.
+      // Longer than the screen, so there is a real end to reach.
       for (int i = 1; i <= 15; i++) {
         await _insert(db, amount: 1000.0 * i, date: today,
             createdAt: noon.add(Duration(minutes: i)));
@@ -266,6 +265,10 @@ void main() {
 
       expect(lastRowBottom, lessThanOrEqualTo(viewportBottom),
           reason: 'the last transaction must remain visible at the end of the list');
+      expect(viewportBottom - lastRowBottom, lessThan(24),
+          reason: 'the list used to end 88px above the bottom, room kept for the '
+              'floating add button the bottom navigation replaced; scrolled all the '
+              'way down that read as an empty band under the last row');
     },
   );
 }

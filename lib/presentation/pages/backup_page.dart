@@ -22,7 +22,10 @@ abstract final class _DesignTokens {
   static const Color lightText = Color(0xFF111827);
   static const Color lightMuted = Color(0xFF6B7280);
   static const Color lightBorder = Color(0xFFE5E7EB);
-  static const Color lightActivity = Color(0xFFE8F5E9);
+  /// Same value as the dashboard's activity fill. These are icon tiles and a
+  /// "Connected" pill rather than a card, so they keep the old pale green: nothing
+  /// here has to be told apart from the background by its own edge.
+  static const Color lightActivity = Color(0xFFD2F0DC);
 
   static const Color darkSurface = Color(0xFF1B2924);
   static const Color darkElevated = Color(0xFF263A30);

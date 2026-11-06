@@ -11,7 +11,8 @@ colors:
   light-text: "#111827"
   light-muted: "#6B7280"
   light-border: "#E5E7EB"
-  light-activity: "#E8F5E9"
+  light-activity: "#D2F0DC"
+  light-activity-border: "#AFD8C0"
   light-grocery: "#E4F1E9"
   light-income: "#D1FAE5"
   light-entertainment: "#EEF0F5"
@@ -87,7 +88,7 @@ An expense and income tracker, not a wallet or banking app. Keep the interface c
 
 ## Colors
 
-Use semantic light/dark pairs rather than applying one color across both themes. Background, cards, text, muted copy, borders and interactive accents are listed in the front matter. Balance cards use `primary` with white text and `accent-light` for the label. The activity card uses `light-activity` in light mode and `dark-tinted` in dark mode. Grocery, income and entertainment colors are subtle icon backgrounds, not transaction text colors.
+Use semantic light/dark pairs rather than applying one color across both themes. Background, cards, text, muted copy, borders and interactive accents are listed in the front matter. Balance cards use `primary` with white text and `accent-light` for the label. The activity card uses `light-activity` in light mode and `dark-tinted` in dark mode, with `light-activity-border` / `dark-border` as its edge. The light fill used to be `#E8F5E9`, which is 1.04:1 against `light-background` — a card you had to look for. A fill or border that is the only thing separating a surface from the page needs about 1.2:1 against that page at minimum, and a border around 1.4:1; check the pair rather than the swatch. Grocery, income and entertainment colors are subtle icon backgrounds, not transaction text colors.
 
 Use `dark-error` for destructive actions and `dark-validation` for errors on dark surfaces. Verify contrast for every actual foreground/background pair; normal text requires 4.5:1 and large text 3:1 (WCAG AA). The mockup uses white text on `#10B981` and pale inactive text on white in places; do not copy those pairs blindly because they can fail contrast. For a mint badge use dark text instead. Never convey errors or income/expense solely by color.
 

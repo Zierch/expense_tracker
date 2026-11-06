@@ -20,8 +20,16 @@ abstract final class _HomeDesign {
   // Light theme tokens
   static const Color lightText = Color(0xFF111827);
   static const Color lightMuted = Color(0xFF6B7280);
-  static const Color lightBorder = Color(0xFFE5E7EB);
-  static const Color lightActivity = Color(0xFFE8F5E9);
+
+  /// The activity card's fill and edge in light mode.
+  ///
+  /// `light-activity` used to be `#E8F5E9` against a `#F4F6F8` background, which is a
+  /// contrast ratio of 1.04: the card was a tint you had to look for. These two are
+  /// the same hue, far enough apart to read as a card edge (fill 1.12 against the
+  /// background, border 1.45) while staying the pale green of the design. Dark mode
+  /// never had the problem — its tint is 1.63 against its own background.
+  static const Color lightActivity = Color(0xFFD2F0DC);
+  static const Color lightActivityBorder = Color(0xFFAFD8C0);
 
   // Dark theme tokens
   static const Color darkTinted = Color(0xFF244239);
@@ -164,8 +172,15 @@ class _HomePageState extends ConsumerState<HomePage> {
                 }
 
                 return SliverPadding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: _HomeDesign.spacingScreen,
+                  // Bottom padding only as air under the last row. The 88 here used
+                  // to be room for the floating add button, which the shell's bottom
+                  // navigation replaced: the button is gone, so the gap was pushing
+                  // the list up for nothing.
+                  padding: const EdgeInsets.fromLTRB(
+                    _HomeDesign.spacingScreen,
+                    0,
+                    _HomeDesign.spacingScreen,
+                    _HomeDesign.spacingSmall,
                   ),
                   sliver: SliverList.separated(
                     itemCount: filtered.length,
@@ -191,7 +206,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                 child: Center(child: Text('Error: $e')),
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 88)),
           ],
         ),
       ),
@@ -492,8 +506,9 @@ class HomeActivityCard extends StatelessWidget {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color bgColor =
         isDark ? _HomeDesign.darkTinted : _HomeDesign.lightActivity;
-    final Color borderColor =
-        isDark ? _HomeDesign.darkBorder : _HomeDesign.lightBorder;
+    final Color borderColor = isDark
+        ? _HomeDesign.darkBorder
+        : _HomeDesign.lightActivityBorder;
     final Color textColor =
         isDark ? _HomeDesign.darkText : _HomeDesign.lightText;
 
