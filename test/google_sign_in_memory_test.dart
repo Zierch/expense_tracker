@@ -44,6 +44,14 @@ void main() {
       expect(await memory.hasSignedIn(), isFalse);
     });
 
+    test('last account remains a display hint after signing out', () async {
+      const memory = GoogleSignInMemory();
+      await memory.rememberEmail('user@example.com');
+      await memory.forget();
+      expect(await const GoogleSignInMemory().lastEmail(), 'user@example.com');
+      expect(await memory.hasSignedIn(), isFalse);
+    });
+
     test('the flag outlives the instance, as it outlives a launch', () async {
       await const GoogleSignInMemory().remember();
 

@@ -95,7 +95,10 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
     final subcategories = await db.getSubcategories(_selectedCategoryId!);
     if (!mounted) return;
     setState(() {
-      _subcategories = subcategories;
+      // Preserve a historical selection without offering the retired default for new entries.
+      _subcategories = subcategories.where((s) =>
+          _type != 'income' || s.name != 'Allowance' ||
+          (widget.transactionId != null && s.id == _selectedSubcategoryId)).toList();
       // Reset subcategory selection if current value not in new list
       if (_selectedSubcategoryId != null &&
           !_subcategories.any((s) => s.id == _selectedSubcategoryId)) {
@@ -282,12 +285,14 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
         ),
       ],
       selected: {_type},
-      onSelectionChanged: (set) {
-        setState(() => _type = set.first);
-        _selectedCategoryId = null;
-        _selectedSubcategoryId = null;
-        _loadCategories();
-      },
+      onSelectionChanged: widget.transactionId != null
+          ? null
+          : (set) {
+              setState(() => _type = set.first);
+              _selectedCategoryId = null;
+              _selectedSubcategoryId = null;
+              _loadCategories();
+            },
       showSelectedIcon: true,
       style: ButtonStyle(
         backgroundColor: WidgetStateProperty.resolveWith<Color>((states) {

@@ -53,7 +53,7 @@ Future<int> _insertExpense(AppDatabase db, double amount) async {
 }
 
 void main() {
-  test('v6 upgrade adds new categories and retains existing allowance', () async {
+  test('v6 upgrade adds categories and removes unused allowance', () async {
     final Directory dir = Directory.systemTemp.createTempSync('expense_tracker_from_v6');
     final String path = p.join(dir.path, 'app.sqlite');
     final AppDatabase? before = openSqliteFileOrSkip(path);
@@ -72,12 +72,41 @@ void main() {
     if (after == null) return;
     try {
       expect((await after.getSubcategories(income.id)).map((s) => s.name),
-          containsAll(['Allowance', 'Pocket Money']));
+          contains('Pocket Money'));
+      expect((await after.getSubcategories(income.id)).map((s) => s.name),
+          isNot(contains('Allowance')));
       expect((await after.getSubcategories(income.id)).map((s) => s.name),
           isNot(contains('Investment')));
       expect((await after.getSubcategories(expense.id)).map((s) => s.name),
           containsAll(['Coffee Shop', 'Fuel']));
       expect((await after.getAllTransactions()).single.id, rowId);
+    } finally {
+      await after.close();
+      dir.deleteSync(recursive: true);
+    }
+  });
+
+  test('v7 upgrade preserves transactions using allowance', () async {
+    final dir = Directory.systemTemp.createTempSync('expense_tracker_from_v7');
+    final path = p.join(dir.path, 'app.sqlite');
+    final before = openSqliteFileOrSkip(path);
+    if (before == null) return;
+    final income = (await before.getCategories(type: 'income')).first;
+    final allowance = await before.findOrCreateSubcategory('Allowance', income.id);
+    final id = await before.insertTransaction(TransactionsCompanion.insert(
+      type: 'income', amount: 50000, categoryId: income.id,
+      subcategoryId: Value(allowance), date: DateTime(2026, 10, 4),
+    ));
+    await before.customStatement('PRAGMA user_version = 7');
+    await before.close();
+    final after = openSqliteFileOrSkip(path);
+    if (after == null) return;
+    try {
+      final row = (await after.getAllTransactions()).single;
+      expect(row.id, id);
+      expect(row.subcategoryId, allowance);
+      expect((await after.getSubcategories(income.id)).map((s) => s.name),
+          contains('Allowance'));
     } finally {
       await after.close();
       dir.deleteSync(recursive: true);
@@ -125,7 +154,7 @@ void main() {
       // upgrade starts from the right place.
       final QueryRow version =
           await after.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 7);
+      expect(version.read<int>('user_version'), 8);
     } finally {
       await after.close();
       dir.deleteSync(recursive: true);

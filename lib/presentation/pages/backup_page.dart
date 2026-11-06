@@ -446,6 +446,10 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             ),
           ),
           const SizedBox(height: 12),
+          if (ref.watch(lastGoogleEmailProvider).valueOrNull case final email?) ...[
+            Text('Last used: $email', style: theme.textTheme.bodySmall),
+            const SizedBox(height: 8),
+          ],
           Text(
             'Sign in with your Google account to back up all data as a complete '
             'snapshot. Files are stored in the '

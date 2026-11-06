@@ -18,13 +18,30 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// The app's own memory of "this device has signed in, and has not signed out
 /// since".
 ///
-/// Only the flag is kept. The account itself belongs to the SDK, which hands
-/// back a fresh one on every restore or sign-in; the app storing a copy would
-/// only be able to serve a stale one.
+/// The last email is a display hint only, never proof of an active session.
 class GoogleSignInMemory {
   const GoogleSignInMemory();
 
   static const String _key = 'googleSignedInBefore';
+  static const String _emailKey = 'googleLastUsedEmail';
+
+  Future<String?> lastEmail() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_emailKey);
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> rememberEmail(String email) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_emailKey, email);
+    } on Object {
+      // The email is a display hint, not a prerequisite for sign-in.
+    }
+  }
 
   /// True when a session may be there to restore.
   ///

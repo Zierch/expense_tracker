@@ -64,5 +64,6 @@ flutter:
       fonts:
         - asset: assets/fonts/Inter-Variable.ttf
   assets:
+    - assets/icon/splash_1024.png
     - assets/images/piggy_bank.png
     - assets/images/receipt_mascot.png

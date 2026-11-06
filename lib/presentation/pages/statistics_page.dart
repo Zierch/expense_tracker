@@ -141,15 +141,6 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-            child: _buildPeriodSelector(
-              isDark: isDark,
-              surfaceColor: surfaceColor,
-              borderColor: borderColor,
-              mutedColor: mutedColor,
-            ),
-          ),
           if (_period == StatisticsPeriod.month)
             MonthSelector(
               month: _selectedDate,
@@ -166,6 +157,15 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
               year: _selectedDate.year,
               textColor: textColor,
             ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+            child: _buildPeriodSelector(
+              isDark: isDark,
+              surfaceColor: surfaceColor,
+              borderColor: borderColor,
+              mutedColor: mutedColor,
+            ),
+          ),
           Expanded(
             child: summaryAsync.when(
               data: (summary) => transactionsAsync.when(
@@ -493,12 +493,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       _totalCard(
         title: totalTitle,
         value: summary.totalExpense,
-        color: expenseColor,
-        icon: Icons.north_east_rounded,
-        textColor: textColor,
-        mutedColor: mutedColor,
-        surfaceColor: surfaceColor,
-        borderColor: borderColor,
+        previous: _previousTotal(allExpenses),
       ),
       const SizedBox(height: 16),
       if (period == StatisticsPeriod.month) ...[
@@ -599,12 +594,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       _totalCard(
         title: totalTitle,
         value: summary.totalIncome,
-        color: incomeColor,
-        icon: Icons.south_west_rounded,
-        textColor: textColor,
-        mutedColor: mutedColor,
-        surfaceColor: surfaceColor,
-        borderColor: borderColor,
+        previous: _previousTotal(allIncomes),
       ),
       const SizedBox(height: 16),
       if (period == StatisticsPeriod.month) ...[
@@ -671,59 +661,60 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     ];
   }
 
+  double _previousTotal(List<TransactionEntity> transactions) {
+    final DateTime start;
+    final DateTime end;
+    switch (_period) {
+      case StatisticsPeriod.week:
+        final current = _range.weeks.firstWhere((week) => week.contains(_selectedDate));
+        end = current.start;
+        start = DateTime(end.year, end.month, end.day - 7);
+        break;
+      case StatisticsPeriod.month:
+        end = _range.start;
+        start = DateTime(end.year, end.month - 1, 1);
+        break;
+      case StatisticsPeriod.year:
+        end = DateTime(_selectedDate.year, 1, 1);
+        start = DateTime(_selectedDate.year - 1, 1, 1);
+        break;
+    }
+    return transactions.where((t) => !t.date.isBefore(start) && t.date.isBefore(end))
+        .fold<double>(0, (sum, t) => sum + t.amount);
+  }
+
   Widget _totalCard({
     required String title,
     required double value,
-    required Color color,
-    required IconData icon,
-    required Color textColor,
-    required Color mutedColor,
-    required Color surfaceColor,
-    required Color borderColor,
+    required double previous,
   }) {
     return Card(
       elevation: 0,
-      color: surfaceColor,
+      color: _StatisticsDesign.primary,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: borderColor),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(title, style: const TextStyle(
+              fontSize: 13, fontWeight: FontWeight.w500, color: Color(0xFFA7F3D0),
+            )),
+            const SizedBox(height: 8),
+            Text(_fmt(value), style: const TextStyle(
+              fontSize: 28, fontWeight: FontWeight.w700, color: Colors.white,
+            )),
+            const SizedBox(height: 12),
             Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.14),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: mutedColor,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _fmt(value),
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: color,
-                    ),
-                  ),
-                ],
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(color: const Color(0xFFA7F3D0), borderRadius: BorderRadius.circular(20)),
+              child: Text(
+                previous > 0
+                    ? '${value >= previous ? '+' : ''}${((value - previous) / previous * 100).toStringAsFixed(1)}% vs previous ${_period.name}'
+                    : 'No previous ${_period.name} data',
+                style: const TextStyle(color: Color(0xFF082E22), fontSize: 12, fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -776,6 +767,49 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
               ),
             ),
             const SizedBox(height: 12),
+            if (buckets.isNotEmpty && title != 'Daily Detail') ...[
+              SizedBox(
+                height: 110,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (final bucket in buckets)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              FittedBox(child: Text(_fmt(bucket.total), style: TextStyle(fontSize: 10, color: mutedColor))),
+                              const SizedBox(height: 4),
+                              SizedBox(
+                                height: 70,
+                                child: FractionallySizedBox(
+                                  heightFactor: maxTotal > 0
+                                      ? (bucket.total / maxTotal).clamp(0.0, 1.0)
+                                      : 0,
+                                  alignment: Alignment.bottomCenter,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: bucket.total == maxTotal
+                                          ? _StatisticsDesign.primary
+                                          : _StatisticsDesign.primary.withOpacity(0.35),
+                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              FittedBox(child: Text(bucket.label.split('  ·').first.replaceFirst('Week ', 'W'), style: TextStyle(fontSize: 10, color: mutedColor))),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (buckets.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -884,8 +918,9 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
               ),
             ),
             const SizedBox(height: 16),
-            CategoryPieChart(data: data),
+            CategoryPieChart(data: data, colorFor: _categoryColor),
             const SizedBox(height: 12),
+            Divider(color: borderColor),
             ...entries.asMap().entries.map((entry) {
               final int idx = entry.key;
               final e = entry.value;

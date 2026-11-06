@@ -8,6 +8,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import 'package:expense_tracker/data/services/file_picker_service.dart';
 import 'package:expense_tracker/data/services/google_drive_service.dart';
+import 'package:expense_tracker/data/services/google_sign_in_memory.dart';
 import 'package:expense_tracker/domain/usecases/export_csv_usecase.dart';
 import 'package:expense_tracker/domain/usecases/export_pdf_usecase.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
@@ -53,6 +54,11 @@ class SnapshotActionController extends Notifier<AsyncValue<String?>> {
 final snapshotActionProvider =
     NotifierProvider<SnapshotActionController, AsyncValue<String?>>(
         SnapshotActionController.new);
+
+final lastGoogleEmailProvider = FutureProvider<String?>((ref) async {
+  ref.watch(googleAccountProvider);
+  return const GoogleSignInMemory().lastEmail();
+});
 
 /// The signed-in Google account, or `null` while signed out.
 ///
