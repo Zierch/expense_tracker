@@ -47,7 +47,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.withExecutor(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   /// The index behind every range filter in the app.
   ///
@@ -109,6 +109,13 @@ class AppDatabase extends _$AppDatabase {
         if (from < 7) {
           await _seedAdditionalSubcategories();
         }
+        if (from < 8) {
+          await customStatement(
+            "DELETE FROM subcategories WHERE name = 'Allowance' "
+            "AND category_id IN (SELECT id FROM categories WHERE type = 'income') "
+            'AND NOT EXISTS (SELECT 1 FROM transactions WHERE subcategory_id = subcategories.id)',
+          );
+        }
       },
     );
   }
@@ -129,10 +136,6 @@ class AppDatabase extends _$AppDatabase {
     await into(subcategories).insert(SubcategoriesCompanion.insert(
       categoryId: incomeCatId,
       name: 'Freelance',
-    ));
-    await into(subcategories).insert(SubcategoriesCompanion.insert(
-      categoryId: incomeCatId,
-      name: 'Allowance',
     ));
     await into(subcategories).insert(SubcategoriesCompanion.insert(
       categoryId: incomeCatId,

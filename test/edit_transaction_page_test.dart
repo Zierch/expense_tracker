@@ -132,6 +132,26 @@ void main() {
     ));
   }
 
+  for (final type in ['expense', 'income']) {
+    sqliteWidgetTest('edit locks the $type transaction type',
+        (AppDatabase db, WidgetTester tester) async {
+      useTallWindow(tester);
+      final category = (await db.getCategories(type: type)).first;
+      final id = await db.insertTransaction(TransactionsCompanion.insert(
+        type: type,
+        amount: 10000,
+        categoryId: category.id,
+        date: DateTime(2026, 10, 15),
+      ));
+      await pumpEditPage(tester, db, id, _Recorder(TransactionRepositoryImpl(db)));
+      await tester.pumpAndSettle();
+      final selector = tester.widget<SegmentedButton<String>>(
+          find.byType(SegmentedButton<String>));
+      expect(selector.selected, {type});
+      expect(selector.onSelectionChanged, isNull);
+    });
+  }
+
   sqliteWidgetTest(
     'editing a transaction keeps the creation time',
     (AppDatabase db, WidgetTester tester) async {

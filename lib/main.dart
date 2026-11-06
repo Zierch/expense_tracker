@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:expense_tracker/presentation/pages/splash_page.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:expense_tracker/presentation/pages/home_page.dart';
@@ -122,12 +123,14 @@ Future<void> main() async {
     overrides: prefs == null
         ? const <Override>[]
         : <Override>[sharedPreferencesProvider.overrideWithValue(prefs)],
-    child: const ExpenseTrackerApp(),
+    child: const ExpenseTrackerApp(showSplash: true),
   ));
 }
 
 class ExpenseTrackerApp extends ConsumerStatefulWidget {
-  const ExpenseTrackerApp({super.key});
+  const ExpenseTrackerApp({super.key, this.showSplash = false});
+
+  final bool showSplash;
 
   @override
   ConsumerState<ExpenseTrackerApp> createState() => _ExpenseTrackerAppState();
@@ -135,16 +138,29 @@ class ExpenseTrackerApp extends ConsumerStatefulWidget {
 
 class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
   bool _updateDialogOpen = false;
+  late bool _showSplash = widget.showSplash;
+  Timer? _splashTimer;
 
   @override
   void initState() {
     super.initState();
+    if (_showSplash) {
+      _splashTimer = Timer(const Duration(milliseconds: 1200), () {
+        if (mounted) setState(() => _showSplash = false);
+      });
+    }
     // The launch check lives entirely in the background: once the app has
     // drawn its first frame, the request runs out from under the UI and only
     // ever *pops up* when a newer release actually exists.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(ref.read(appUpdateControllerProvider.notifier).checkOnLaunch());
     });
+  }
+
+  @override
+  void dispose() {
+    _splashTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -174,7 +190,12 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
       builder: (BuildContext context, Widget? child) {
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: systemUiStyleFor(Theme.of(context).brightness),
-          child: child ?? const SizedBox.shrink(),
+          child: Stack(
+            children: [
+              child ?? const SizedBox.shrink(),
+              if (_showSplash) const Positioned.fill(child: SplashPage()),
+            ],
+          ),
         );
       },
     );

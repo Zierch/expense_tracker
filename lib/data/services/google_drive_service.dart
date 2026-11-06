@@ -214,6 +214,7 @@ class GoogleDriveService {
 
     try {
       final GoogleSignInAccount account = await _googleSignIn.authenticate();
+      await _signInMemory.rememberEmail(account.email);
       _account = account;
       _accountController.add(account);
       // From here on a launch may restore this session, and may therefore ask
