@@ -1063,11 +1063,14 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   Color _categoryColor(String name) {
     switch (name.toLowerCase()) {
       case 'food':
+      case 'coffee shop':
         return const Color(0xFFF59E0B);
       case 'other needs':
         return const Color(0xFF3B82F6);
       case 'data/internet package':
         return const Color(0xFF8B5CF6);
+      case 'fuel':
+        return const Color(0xFF0EA5E9);
       case 'salary':
         return const Color(0xFF10B981);
       case 'freelance':
@@ -1075,6 +1078,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
       case 'investment':
         return const Color(0xFF6366F1);
       case 'allowance':
+      case 'pocket money':
         return const Color(0xFFEAB308);
       case 'bonus':
       case 'gift':

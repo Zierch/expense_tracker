@@ -32,38 +32,43 @@ Future<void> main() async {
   await app.main();
 }
 
-/// Categories with the subcategory names that end up on the rows: the tile
-/// shows `subcategoryName ?? categoryName`, so a row is named by its subcategory
-/// while the statistics and the PDF break down by the category above it.
-const Map<String, (String, List<String>)> _catalogue =
-    <String, (String, List<String>)>{
-  'Housing': ('expense', <String>['Rent', 'Electricity']),
-  'Groceries': ('expense', <String>['Supermarket', 'Market']),
-  'Transport': ('expense', <String>['Fuel', 'Ride Hailing']),
-  'Dining': ('expense', <String>['Coffee', 'Restaurant']),
-  'Subscriptions': ('expense', <String>['Streaming', 'Music']),
-  'Health': ('expense', <String>['Pharmacy']),
-  'Salary': ('income', <String>['Monthly Salary']),
-  'Freelance': ('income', <String>['Side Project']),
-};
+/// The rows are named by their subcategory — the tile shows
+/// `subcategoryName ?? categoryName`, while the statistics and the PDF break down
+/// by the category above it — so this seeds against the categories the app itself
+/// creates, not a set of its own.
+///
+/// It used to invent `Housing`, `Groceries`, `Transport` and friends. That read
+/// fine in a screenshot, but it also meant the pie chart's colour table, which
+/// knows the shipped names, fell through to its grey default for every slice: the
+/// picture showed a chart no install could produce.
+const List<(String, String)> _daily = <(String, String)>[
+  ('Food', 'Lunch at the office'),
+  ('Food', 'Groceries for the week'),
+  ('Coffee Shop', 'Coffee with the team'),
+  ('Fuel', 'Filled the tank'),
+  ('Other Needs', 'Household bits'),
+  ('Data/Internet Package', 'Monthly data plan'),
+];
+
+/// The larger rows of a month: what a household actually spends in one go.
+const List<(String, String, double)> _monthly = <(String, String, double)>[
+  ('Other Needs', 'Rent', 3200000),
+  ('Data/Internet Package', 'Internet and data', 385000),
+  ('Other Needs', 'Electricity bill', 320000),
+  ('Coffee Shop', 'Coffee beans', 145000),
+];
 
 Future<void> _seed(AppDatabase db) async {
+  /// Subcategory name to its id, and to the category that owns it.
   final Map<String, int> subcategoryIds = <String, int>{};
-
-  /// The category a subcategory belongs to, which every row has to carry.
   final Map<String, int> categoryOfSub = <String, int>{};
 
-  for (final MapEntry<String, (String, List<String>)> entry
-      in _catalogue.entries) {
-    final int categoryId = await db.into(db.categories).insert(
-          CategoriesCompanion.insert(name: entry.key, type: entry.value.$1),
-        );
-
-    for (final String child in entry.value.$2) {
-      subcategoryIds[child] = await db.into(db.subcategories).insert(
-            SubcategoriesCompanion.insert(categoryId: categoryId, name: child),
-          );
-      categoryOfSub[child] = categoryId;
+  for (final String type in <String>['expense', 'income']) {
+    for (final Category category in await db.getCategories(type: type)) {
+      for (final Subcategory child in await db.getSubcategories(category.id)) {
+        subcategoryIds[child.name] = child.id;
+        categoryOfSub[child.name] = category.id;
+      }
     }
   }
 
@@ -97,54 +102,30 @@ Future<void> _seed(AppDatabase db) async {
         monthsBack == 0 && onDay > now.day ? now.day : onDay,
       );
 
-  /// Subcategory and note travel together. A note that contradicts the row it
-  /// sits under — "Coffee" over "Fuel" — is the one thing that would make the
-  /// data read as generated rather than lived.
-  const List<(String, String)> daily = <(String, String)>[
-    ('Supermarket', 'Weekly groceries'),
-    ('Market', 'Fresh produce'),
-    ('Fuel', 'Filled the tank'),
-    ('Ride Hailing', 'Ride to the office'),
-    ('Coffee', 'Coffee with the team'),
-    ('Restaurant', 'Dinner out'),
-    ('Pharmacy', 'Vitamins'),
-  ];
-
   for (int back = 2; back >= 0; back--) {
     await row(
-        subcategory: 'Monthly Salary',
+        subcategory: 'Salary',
         type: 'income',
         amount: 12500000,
         date: day(back, 25),
         note: 'Monthly salary');
-    await row(
-        subcategory: 'Rent',
+
+    // The same bills land on the same days every month, so the statistics page
+    // has a previous month to compare against instead of a flat line.
+    for (final (String subcategory, String note, double amount) entry
+        in _monthly) {
+      await row(
+        subcategory: entry.$1,
         type: 'expense',
-        amount: 3200000,
-        date: day(back, 2),
-        note: 'Rent');
-    await row(
-        subcategory: 'Electricity',
-        type: 'expense',
-        amount: 320000.0 + random.nextInt(90000),
-        date: day(back, 5),
-        note: 'Electricity bill');
-    await row(
-        subcategory: 'Streaming',
-        type: 'expense',
-        amount: 54000,
-        date: day(back, 7),
-        note: 'Streaming plan');
-    await row(
-        subcategory: 'Music',
-        type: 'expense',
-        amount: 54990,
-        date: day(back, 7),
-        note: 'Music plan');
+        amount: entry.$3,
+        date: day(back, 2 + _monthly.indexOf(entry) * 3),
+        note: entry.$2,
+      );
+    }
 
     if (back == 1) {
       await row(
-          subcategory: 'Side Project',
+          subcategory: 'Freelance',
           type: 'income',
           amount: 2750000,
           date: day(back, 18),
@@ -153,7 +134,7 @@ Future<void> _seed(AppDatabase db) async {
 
     for (int i = 0; i < 9; i++) {
       final (String subcategory, String note) =
-          daily[random.nextInt(daily.length)];
+          _daily[random.nextInt(_daily.length)];
       await row(
         subcategory: subcategory,
         type: 'expense',

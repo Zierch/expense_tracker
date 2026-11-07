@@ -11,18 +11,28 @@ this out in full.
 
 ## Screenshots
 
-Dark theme, on Android 16. The phone in these pictures is an emulator holding
-invented transactions — `tool/demo_main.dart` seeds them — so no screenshot
-carries anybody's real spending.
+Android 16, in both themes. The phone in these pictures is an emulator holding
+invented transactions — `tool/demo_main.dart` seeds them into the categories the
+app ships with, so no screenshot carries anybody's real spending.
 
-| Dashboard | Statistics | Add a transaction |
+**Dark theme**
+
+| Dashboard | Statistics | Settings |
 | --- | --- | --- |
-| <img src="assets/screenshots/dashboard-dark.png" width="240" alt="Dashboard, dark"> | <img src="assets/screenshots/statistics-dark.png" width="240" alt="Statistics, dark"> | <img src="assets/screenshots/add-transaction-empty-dark.png" width="240" alt="Add a transaction, empty"> |
-| <img src="assets/screenshots/dashboard-bottom-dark.png" width="240" alt="End of the dashboard list, dark"> | <img src="assets/screenshots/statistics-breakdown-dark.png" width="240" alt="Expense breakdown, dark"> | <img src="assets/screenshots/add-transaction-filled-dark.png" width="240" alt="Add a transaction, filled in"> |
-| <img src="assets/screenshots/dashboard-light.png" width="240" alt="Dashboard, light"> | <img src="assets/screenshots/dashboard-bottom-light.png" width="240" alt="End of the dashboard list, light"> | <img src="assets/screenshots/backup-dark.png" width="240" alt="Backup and PDF report"> |
+| <img src="assets/screenshots/dashboard-dark.png" width="240" alt="Dashboard, dark"> | <img src="assets/screenshots/statistics-dark.png" width="240" alt="Statistics, dark"> | <img src="assets/screenshots/settings-dark.png" width="240" alt="Settings, dark"> |
+| <img src="assets/screenshots/dashboard-bottom-dark.png" width="240" alt="End of the dashboard list, dark"> | <img src="assets/screenshots/statistics-breakdown-dark.png" width="240" alt="Expense breakdown, dark"> | <img src="assets/screenshots/add-transaction-empty-dark.png" width="240" alt="Add a transaction, empty"> |
+| <img src="assets/screenshots/add-transaction-filled-dark.png" width="240" alt="Add a transaction, filled in"> | | |
+
+**Light theme**
+
+| Dashboard | Statistics | Settings |
+| --- | --- | --- |
+| <img src="assets/screenshots/dashboard-light.png" width="240" alt="Dashboard, light"> | <img src="assets/screenshots/statistics-light.png" width="240" alt="Statistics, light"> | <img src="assets/screenshots/settings-light.png" width="240" alt="Settings, light"> |
+| <img src="assets/screenshots/dashboard-bottom-light.png" width="240" alt="End of the dashboard list, light"> | <img src="assets/screenshots/statistics-breakdown-light.png" width="240" alt="Expense breakdown, light"> | |
 
 Recording one transaction — the amount, the quick-append buttons, the
-subcategory, the note, and the dashboard it lands back on:
+subcategory, the note, and the dashboard it lands back on, where the new row
+is already at the top:
 
 <img src="assets/screenshots/add-transaction-dark.gif" width="240" alt="Adding a transaction, end to end">
 
