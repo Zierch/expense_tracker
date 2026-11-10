@@ -47,7 +47,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.withExecutor(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   /// The index behind every range filter in the app.
   ///
@@ -109,11 +109,19 @@ class AppDatabase extends _$AppDatabase {
         if (from < 7) {
           await _seedAdditionalSubcategories();
         }
-        if (from < 8) {
+        // v8 used to delete an unused Allowance here, because v7 had renamed it to
+        // Pocket Money and the old row looked like a leftover. That step is gone:
+        // it was deleting the name v9 puts back, so a v6 install arrived with no
+        // Allowance at all. Leaving an unused Allowance behind is harmless now.
+        //
+        // v9 renames Pocket Money back in place rather than seeding beside it, so
+        // a row that already points at it keeps pointing at the same id and only
+        // the label changes.
+        if (from < 9) {
           await customStatement(
-            "DELETE FROM subcategories WHERE name = 'Allowance' "
-            "AND category_id IN (SELECT id FROM categories WHERE type = 'income') "
-            'AND NOT EXISTS (SELECT 1 FROM transactions WHERE subcategory_id = subcategories.id)',
+            "UPDATE subcategories SET name = 'Allowance' "
+            "WHERE name = 'Pocket Money' AND category_id IN "
+            "(SELECT id FROM categories WHERE type = 'income')",
           );
         }
       },
@@ -174,7 +182,7 @@ class AppDatabase extends _$AppDatabase {
       'AND NOT EXISTS (SELECT 1 FROM transactions WHERE subcategory_id = subcategories.id)',
       [income, 'Investment'],
     );
-    await findOrCreateSubcategory('Pocket Money', income);
+    await findOrCreateSubcategory('Allowance', income);
     await findOrCreateSubcategory('Coffee Shop', expense);
     await findOrCreateSubcategory('Fuel', expense);
   }

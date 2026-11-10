@@ -95,10 +95,10 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
     final subcategories = await db.getSubcategories(_selectedCategoryId!);
     if (!mounted) return;
     setState(() {
-      // Preserve a historical selection without offering the retired default for new entries.
-      _subcategories = subcategories.where((s) =>
-          _type != 'income' || s.name != 'Allowance' ||
-          (widget.transactionId != null && s.id == _selectedSubcategoryId)).toList();
+      // Allowance is a normal choice again: v1.10.1 hid it for new entries, and
+      // v1.10.3's rename back to Pocket Money made that a filter on a name that no
+      // longer existed — hiding nothing, while a row already using it kept it.
+      _subcategories = subcategories;
       // Reset subcategory selection if current value not in new list
       if (_selectedSubcategoryId != null &&
           !_subcategories.any((s) => s.id == _selectedSubcategoryId)) {

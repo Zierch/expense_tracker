@@ -22,7 +22,6 @@ import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
 import 'package:expense_tracker/presentation/pages/home_page.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
-import 'package:expense_tracker/presentation/widgets/summary_card.dart';
 import 'package:expense_tracker/presentation/widgets/transaction_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -62,16 +61,15 @@ Future<void> _pumpHome(WidgetTester tester, AppDatabase db) async {
 }
 
 /// Every piece of text the summary/balance card is currently showing.
-String _summaryText(WidgetTester tester) {
-  final target = find.byType(HomeBalanceCard);
-  final card = target.evaluate().isNotEmpty ? target : find.byType(SummaryCard);
-  return tester
+String _summaryText(WidgetTester tester) => tester
       .widgetList<Text>(
-        find.descendant(of: card, matching: find.byType(Text)),
+        find.descendant(
+          of: find.byType(HomeBalanceCard),
+          matching: find.byType(Text),
+        ),
       )
       .map((Text text) => text.data ?? '')
       .join(' | ');
-}
 
 /// The amounts on the rows, in the order the rows are laid out.
 List<String> _rowAmounts(WidgetTester tester) => tester

@@ -71,10 +71,12 @@ void main() {
     final AppDatabase? after = openSqliteFileOrSkip(path);
     if (after == null) return;
     try {
+      // v9 renamed Pocket Money back to Allowance, so a v6 install arrives at the
+      // name it had before v7 rather than the one v7 introduced.
       expect((await after.getSubcategories(income.id)).map((s) => s.name),
-          contains('Pocket Money'));
+          contains('Allowance'));
       expect((await after.getSubcategories(income.id)).map((s) => s.name),
-          isNot(contains('Allowance')));
+          isNot(contains('Pocket Money')));
       expect((await after.getSubcategories(income.id)).map((s) => s.name),
           isNot(contains('Investment')));
       expect((await after.getSubcategories(expense.id)).map((s) => s.name),
@@ -107,6 +109,53 @@ void main() {
       expect(row.subcategoryId, allowance);
       expect((await after.getSubcategories(income.id)).map((s) => s.name),
           contains('Allowance'));
+    } finally {
+      await after.close();
+      dir.deleteSync(recursive: true);
+    }
+  });
+
+  // v7 renamed Allowance to Pocket Money and v8 deleted the old row. Both were
+  // the wrong call, so v9 renames it back — in place, not by seeding a second
+  // subcategory, because a transaction already pointing at Pocket Money has to
+  // keep pointing at the same id. This is the assertion that would fail if the
+  // upgrade seeded instead of renamed: the row would be orphaned and the list
+  // would show two income subcategories meaning the same thing.
+  test('v9 renames Pocket Money back to Allowance in place', () async {
+    final Directory dir =
+        Directory.systemTemp.createTempSync('expense_tracker_from_v8');
+    final String path = p.join(dir.path, 'app.sqlite');
+    final AppDatabase? before = openSqliteFileOrSkip(path);
+    if (before == null) return;
+    final income = (await before.getCategories(type: 'income')).first;
+    final int pocketMoney =
+        await before.findOrCreateSubcategory('Pocket Money', income.id);
+    final int id = await before.insertTransaction(TransactionsCompanion.insert(
+      type: 'income',
+      amount: 50000,
+      categoryId: income.id,
+      subcategoryId: Value(pocketMoney),
+      date: DateTime(2026, 10, 4),
+    ));
+    await before.customStatement('PRAGMA user_version = 8');
+    await before.close();
+
+    final AppDatabase? after = openSqliteFileOrSkip(path);
+    if (after == null) return;
+    try {
+      final List<Subcategory> subs = await after.getSubcategories(income.id);
+      expect(subs.map((Subcategory s) => s.name), contains('Allowance'));
+      expect(subs.map((Subcategory s) => s.name), isNot(contains('Pocket Money')),
+          reason: 'renamed, not duplicated: two names for one thing would split '
+              'the statistics between them');
+
+      final Transaction row = (await after.getAllTransactions()).single;
+      expect(row.id, id);
+      expect(row.subcategoryId, pocketMoney,
+          reason: 'the id is unchanged, so the row keeps the subcategory it was '
+              'recorded under');
+      expect(subs.firstWhere((Subcategory s) => s.id == pocketMoney).name,
+          'Allowance');
     } finally {
       await after.close();
       dir.deleteSync(recursive: true);
@@ -154,7 +203,7 @@ void main() {
       // upgrade starts from the right place.
       final QueryRow version =
           await after.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 8);
+      expect(version.read<int>('user_version'), 9);
     } finally {
       await after.close();
       dir.deleteSync(recursive: true);

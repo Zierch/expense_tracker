@@ -10,7 +10,11 @@ import 'package:expense_tracker/presentation/widgets/category_pie_chart.dart';
 import 'package:expense_tracker/presentation/widgets/month_selector.dart';
 
 // ponytail: Design tokens scoped locally until shared DesignSystem token package is extracted.
-abstract final class _StatisticsDesign {
+/// The page's colours and radii.
+///
+/// Public only so `color_contrast_test.dart` can measure the figures it draws
+/// against the surfaces they sit on.
+abstract final class StatisticsDesign {
   // Brand colors
   static const Color primary = Color(0xFF0E5A44);
 
@@ -20,8 +24,15 @@ abstract final class _StatisticsDesign {
   static const Color lightText = Color(0xFF111827);
   static const Color lightMuted = Color(0xFF6B7280);
   static const Color lightBorder = Color(0xFFE5E7EB);
-  static const Color lightExpense = Color(0xFFD64545);
-  static const Color lightIncome = Color(0xFF2E9E5B);
+  /// Income and expense figures on a white card.
+  ///
+  /// Both were below WCAG AA for body text: `#2E9E5B` sat at 3.41:1 and `#D64545`
+  /// at 4.38:1, and the amount on a row is 15px — under the 18.66px bold that
+  /// would let it pass as large text. Darkened until they clear 4.5:1 on white
+  /// and on the page background; the hue is unchanged, so green still means money
+  /// in and red money out.
+  static const Color lightExpense = Color(0xFFC53030);
+  static const Color lightIncome = Color(0xFF24804A);
 
   // Dark theme tokens
   static const Color darkBackground = Color(0xFF101916);
@@ -33,6 +44,19 @@ abstract final class _StatisticsDesign {
   static const Color darkAccent = Color(0xFF83DFB7);
   static const Color darkExpense = Color(0xFFFF8A8A);
   static const Color darkIncome = Color(0xFF83DFB7);
+
+  /// [color] darkened until it reads on a light tint of itself.
+  ///
+  /// A pie legend is a colour key, so the glyph has to stay recognisably the
+  /// slice's colour — but at full strength on a 14% tint of the same hue the two
+  /// are 1.7-2.4:1 apart, which is a smudge rather than an icon. Scaling the
+  /// lightness keeps the hue and gets every category past 5:1.
+  static Color legibleIconColor(Color color) {
+    final HSLColor hsl = HSLColor.fromColor(color);
+    return hsl
+        .withLightness((hsl.lightness * 0.55).clamp(0.0, 1.0))
+        .toColor();
+  }
 }
 
 enum StatisticsPeriod {
@@ -107,19 +131,19 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
 
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color backgroundColor =
-        isDark ? _StatisticsDesign.darkBackground : _StatisticsDesign.lightBackground;
+        isDark ? StatisticsDesign.darkBackground : StatisticsDesign.lightBackground;
     final Color surfaceColor =
-        isDark ? _StatisticsDesign.darkSurface : _StatisticsDesign.lightSurface;
+        isDark ? StatisticsDesign.darkSurface : StatisticsDesign.lightSurface;
     final Color textColor =
-        isDark ? _StatisticsDesign.darkText : _StatisticsDesign.lightText;
+        isDark ? StatisticsDesign.darkText : StatisticsDesign.lightText;
     final Color mutedColor =
-        isDark ? _StatisticsDesign.darkMuted : _StatisticsDesign.lightMuted;
+        isDark ? StatisticsDesign.darkMuted : StatisticsDesign.lightMuted;
     final Color borderColor =
-        isDark ? _StatisticsDesign.darkBorder : _StatisticsDesign.lightBorder;
+        isDark ? StatisticsDesign.darkBorder : StatisticsDesign.lightBorder;
     final Color expenseColor =
-        isDark ? _StatisticsDesign.darkExpense : _StatisticsDesign.lightExpense;
+        isDark ? StatisticsDesign.darkExpense : StatisticsDesign.lightExpense;
     final Color incomeColor =
-        isDark ? _StatisticsDesign.darkIncome : _StatisticsDesign.lightIncome;
+        isDark ? StatisticsDesign.darkIncome : StatisticsDesign.lightIncome;
     final Color dailyColor =
         isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706);
 
@@ -259,9 +283,9 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     required Color mutedColor,
   }) {
     final activeColor =
-        isDark ? _StatisticsDesign.darkTinted : const Color(0xFFD1FAE5);
+        isDark ? StatisticsDesign.darkTinted : const Color(0xFFD1FAE5);
     final activeTextColor =
-        isDark ? _StatisticsDesign.darkAccent : _StatisticsDesign.primary;
+        isDark ? StatisticsDesign.darkAccent : StatisticsDesign.primary;
 
     return SizedBox(
       width: double.infinity,
@@ -413,9 +437,9 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     required Color mutedColor,
   }) {
     final activeColor =
-        isDark ? _StatisticsDesign.darkTinted : const Color(0xFFD1FAE5);
+        isDark ? StatisticsDesign.darkTinted : const Color(0xFFD1FAE5);
     final activeTextColor =
-        isDark ? _StatisticsDesign.darkAccent : _StatisticsDesign.primary;
+        isDark ? StatisticsDesign.darkAccent : StatisticsDesign.primary;
 
     return SegmentedButton<int>(
       segments: const [
@@ -690,7 +714,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   }) {
     return Card(
       elevation: 0,
-      color: _StatisticsDesign.primary,
+      color: StatisticsDesign.primary,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
@@ -792,8 +816,8 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                                   child: Container(
                                     decoration: BoxDecoration(
                                       color: bucket.total == maxTotal
-                                          ? _StatisticsDesign.primary
-                                          : _StatisticsDesign.primary.withOpacity(0.35),
+                                          ? StatisticsDesign.primary
+                                          : StatisticsDesign.primary.withOpacity(0.35),
                                       borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
                                     ),
                                   ),
@@ -945,7 +969,16 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                             color: color.withOpacity(0.14),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Icon(_categoryIcon(e.key), size: 18, color: color),
+                          // The glyph used to be drawn in `color` on a 14%
+                          // tint of that same colour: 1.74:1 for Allowance,
+                          // 1.91:1 for Food, so the icon was the one thing in
+                          // the row you could not see. A darker shade of the
+                          // category colour keeps the identity and clears 5:1.
+                          child: Icon(
+                            _categoryIcon(e.key),
+                            size: 18,
+                            color: StatisticsDesign.legibleIconColor(color),
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -1092,6 +1125,12 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     switch (name.toLowerCase()) {
       case 'food':
         return Icons.restaurant;
+      case 'coffee shop':
+        return Icons.local_cafe_outlined;
+      case 'fuel':
+        return Icons.local_gas_station_outlined;
+      case 'pocket money':
+        return Icons.account_balance_wallet_outlined;
       case 'other needs':
         return Icons.shopping_bag;
       case 'data/internet package':

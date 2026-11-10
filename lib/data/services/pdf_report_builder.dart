@@ -275,8 +275,10 @@ pw.Widget _sectionTitle(String title) => pw.Text(
 const PdfColor _ink = PdfColor.fromInt(0xFF1A1E22);
 const PdfColor _muted = PdfColor.fromInt(0xFF5A646E);
 const PdfColor _teal = PdfColor.fromInt(0xFF00897B);
-const PdfColor _income = PdfColor.fromInt(0xFF2E9E5B);
-const PdfColor _expense = PdfColor.fromInt(0xFFD64545);
+// The app's own income and expense figures, darkened so they clear WCAG AA on
+// the `_tint` panels they sit on: the old pair was 3.15:1 and 4.04:1 there.
+const PdfColor _income = PdfColor.fromInt(0xFF24804A);
+const PdfColor _expense = PdfColor.fromInt(0xFFC53030);
 const PdfColor _rule = PdfColor.fromInt(0xFFD9DEE3);
 const PdfColor _tint = PdfColor.fromInt(0xFFF4F6F8);
 

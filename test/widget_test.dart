@@ -197,6 +197,101 @@ void main() {
     expect(_iconWidget(tester).color, const Color(0xFF83DFB7));
   });
 
+  // Food is the commonest expense in the app, and it used to be drawn in the grocery
+  // green — which was the income pair, character for character. A row that spent money
+  // looked like a row that earned it. The two palettes are separate now, and this is
+  // the assertion that keeps them apart: it fails on the old code with #0E5A44, the
+  // income icon colour, where it now expects amber.
+  testWidgets('a food expense is not drawn in the income green', (
+    WidgetTester tester,
+  ) async {
+    final foodTx = _transaction(
+      type: 'expense',
+      categoryName: 'Expense',
+      subcategoryName: 'Food',
+    );
+
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: foodTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+      Brightness.light,
+    ));
+
+    expect(_iconTileDecoration(tester).color, const Color(0xFFFEF3C7));
+    expect(_iconWidget(tester).color, const Color(0xFFB45309));
+    expect(_iconWidget(tester).icon, Icons.restaurant);
+
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: foodTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+      Brightness.dark,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(_iconTileDecoration(tester).color, const Color(0xFF3B2E18));
+    expect(_iconWidget(tester).color, const Color(0xFFFCD34D));
+  });
+
+  testWidgets('a coffee expense shares food\'s amber, not the income green', (
+    WidgetTester tester,
+  ) async {
+    final coffeeTx = _transaction(
+      type: 'expense',
+      categoryName: 'Expense',
+      subcategoryName: 'Coffee Shop',
+    );
+
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: coffeeTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+      Brightness.light,
+    ));
+
+    expect(_iconTileDecoration(tester).color, const Color(0xFFFEF3C7));
+    expect(_iconWidget(tester).color, const Color(0xFFB45309));
+    expect(_iconWidget(tester).icon, Icons.local_cafe_outlined);
+  });
+
+  testWidgets('an income row keeps its own green, which food no longer borrows', (
+    WidgetTester tester,
+  ) async {
+    final incomeTx = _transaction(type: 'income', categoryName: 'Salary');
+    final foodTx = _transaction(
+      type: 'expense',
+      categoryName: 'Expense',
+      subcategoryName: 'Food',
+    );
+
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: incomeTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+    ));
+    final Color? incomeIcon = _iconWidget(tester).color;
+
+    await tester.pumpWidget(_wrap(
+      TransactionTile(
+        transaction: foodTx,
+        onTap: () {},
+        onDelete: () {},
+      ),
+    ));
+
+    expect(_iconWidget(tester).color, isNot(incomeIcon),
+        reason: 'the glyph alone is not enough to tell a spend from a payment');
+  });
+
   testWidgets('renders entertainment tile colors in light and dark themes', (
     WidgetTester tester,
   ) async {

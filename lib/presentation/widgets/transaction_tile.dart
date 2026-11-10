@@ -3,9 +3,18 @@ import 'package:intl/intl.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 
 /// Semantic design tokens for transaction rows matching DESIGN.md.
-abstract final class _TileDesign {
+/// The row's colours.
+///
+/// Public only so `color_contrast_test.dart` can measure the foreground/background
+/// pairs the row really draws — a private class would force the test to restate
+/// the hex values, which is the thing that let three of them drift below AA.
+abstract final class TileDesign {
   // Surface & border
   static const Color lightSurface = Colors.white;
+
+  /// Public, with the four text colours below, only so `color_contrast_test.dart`
+  /// can measure the pairs the app actually draws. Nothing in the app reads them
+  /// from here.
   static const Color darkSurface = Color(0xFF1B2924);
   static const Color lightBorder = Color(0xFFE5E7EB);
   static const Color darkBorder = Color(0xFF31443A);
@@ -24,6 +33,18 @@ abstract final class _TileDesign {
   static const Color lightEntertainment = Color(0xFFEEF0F5);
   static const Color darkEntertainment = Color(0xFF353E4C);
 
+  /// Food's own pair, and the reason it is not part of the grocery one.
+  ///
+  /// `_isGrocery` used to answer yes for `food`, so the commonest expense in the app
+  /// was drawn in the grocery green — which is `#0E5A44` on `#83DFB7`, character for
+  /// character the income pair. A row that spends money looked like a row that earned
+  /// it, distinguished only by the glyph and the minus sign. Amber is the colour
+  /// Statistics already gives Food in its pie chart, so the two screens agree.
+  static const Color lightFood = Color(0xFFFEF3C7);
+  static const Color darkFood = Color(0xFF3B2E18);
+  static const Color foodIconLight = Color(0xFFB45309);
+  static const Color foodIconDark = Color(0xFFFCD34D);
+
   // Category icon foregrounds (high WCAG AA/AAA contrast on respective backgrounds)
   static const Color groceryIconLight = Color(0xFF0E5A44);
   static const Color groceryIconDark = Color(0xFF83DFB7);
@@ -38,10 +59,15 @@ abstract final class _TileDesign {
   static const Color lightExpenseIcon = Color(0xFFD64545);
   static const Color darkExpenseIcon = Color(0xFFFF8A8A);
 
-  // Amount text colors
-  static const Color lightIncomeText = Color(0xFF2E9E5B);
+  // Amount text colors.
+  //
+  // The light pair used to be `#2E9E5B` and `#D64545`, which are 3.41:1 and
+  // 4.38:1 on the white row — under AA for the 15px bold figure they colour.
+  // Darkened to clear 4.5:1 with the hue intact. The same two values are what
+  // Statistics draws its totals in, so the two screens stay in step.
+  static const Color lightIncomeText = Color(0xFF24804A);
   static const Color darkIncomeText = Color(0xFF83DFB7);
-  static const Color lightExpenseText = Color(0xFFD64545);
+  static const Color lightExpenseText = Color(0xFFC53030);
   static const Color darkExpenseText = Color(0xFFFF8A8A);
 }
 
@@ -65,11 +91,19 @@ class TransactionTile extends StatelessWidget {
     required this.onDelete,
   });
 
+  /// Whether the row is a food expense, which is `Food` and the coffee it buys.
+  ///
+  /// Kept apart from [_isGrocery] because the two palettes used to be one, and that
+  /// one was the income green.
+  static bool _isFood(String category) {
+    final lower = category.trim().toLowerCase();
+    return lower == 'food' || lower == 'coffee shop';
+  }
+
   static bool _isGrocery(String category) {
     final lower = category.trim().toLowerCase();
     return lower == 'grocery' ||
         lower == 'groceries' ||
-        lower == 'food' ||
         lower == 'supermarket' ||
         lower.contains('grocery') ||
         lower.contains('groceries');
@@ -94,6 +128,12 @@ class TransactionTile extends StatelessWidget {
         return Icons.shopping_cart_outlined;
       case 'food':
         return Icons.restaurant;
+      case 'coffee shop':
+        return Icons.local_cafe_outlined;
+      case 'fuel':
+        return Icons.local_gas_station_outlined;
+      case 'pocket money':
+        return Icons.account_balance_wallet_outlined;
       case 'entertainment':
       case 'entertainments':
       case 'movie':
@@ -133,31 +173,34 @@ class TransactionTile extends StatelessWidget {
     final String name = transaction.displayCategory;
     final String sign = isIncome ? '+' : '-';
 
-    final Color surfaceColor = isDark ? _TileDesign.darkSurface : _TileDesign.lightSurface;
-    final Color borderColor = isDark ? _TileDesign.darkBorder : _TileDesign.lightBorder;
-    final Color titleColor = isDark ? _TileDesign.darkText : _TileDesign.lightText;
-    final Color subtitleColor = isDark ? _TileDesign.darkMuted : _TileDesign.lightMuted;
+    final Color surfaceColor = isDark ? TileDesign.darkSurface : TileDesign.lightSurface;
+    final Color borderColor = isDark ? TileDesign.darkBorder : TileDesign.lightBorder;
+    final Color titleColor = isDark ? TileDesign.darkText : TileDesign.lightText;
+    final Color subtitleColor = isDark ? TileDesign.darkMuted : TileDesign.lightMuted;
 
     final Color iconBgColor;
     final Color iconColor;
 
     if (isIncome) {
-      iconBgColor = isDark ? _TileDesign.darkIncome : _TileDesign.lightIncome;
-      iconColor = isDark ? _TileDesign.incomeIconDark : _TileDesign.incomeIconLight;
+      iconBgColor = isDark ? TileDesign.darkIncome : TileDesign.lightIncome;
+      iconColor = isDark ? TileDesign.incomeIconDark : TileDesign.incomeIconLight;
+    } else if (_isFood(name)) {
+      iconBgColor = isDark ? TileDesign.darkFood : TileDesign.lightFood;
+      iconColor = isDark ? TileDesign.foodIconDark : TileDesign.foodIconLight;
     } else if (_isGrocery(name)) {
-      iconBgColor = isDark ? _TileDesign.darkGrocery : _TileDesign.lightGrocery;
-      iconColor = isDark ? _TileDesign.groceryIconDark : _TileDesign.groceryIconLight;
+      iconBgColor = isDark ? TileDesign.darkGrocery : TileDesign.lightGrocery;
+      iconColor = isDark ? TileDesign.groceryIconDark : TileDesign.groceryIconLight;
     } else if (_isEntertainment(name)) {
-      iconBgColor = isDark ? _TileDesign.darkEntertainment : _TileDesign.lightEntertainment;
-      iconColor = isDark ? _TileDesign.entertainmentIconDark : _TileDesign.entertainmentIconLight;
+      iconBgColor = isDark ? TileDesign.darkEntertainment : TileDesign.lightEntertainment;
+      iconColor = isDark ? TileDesign.entertainmentIconDark : TileDesign.entertainmentIconLight;
     } else {
-      iconBgColor = isDark ? _TileDesign.darkExpenseBg : _TileDesign.lightExpenseBg;
-      iconColor = isDark ? _TileDesign.darkExpenseIcon : _TileDesign.lightExpenseIcon;
+      iconBgColor = isDark ? TileDesign.darkExpenseBg : TileDesign.lightExpenseBg;
+      iconColor = isDark ? TileDesign.darkExpenseIcon : TileDesign.lightExpenseIcon;
     }
 
     final Color amountColor = isIncome
-        ? (isDark ? _TileDesign.darkIncomeText : _TileDesign.lightIncomeText)
-        : (isDark ? _TileDesign.darkExpenseText : _TileDesign.lightExpenseText);
+        ? (isDark ? TileDesign.darkIncomeText : TileDesign.lightIncomeText)
+        : (isDark ? TileDesign.darkExpenseText : TileDesign.lightExpenseText);
 
     return Dismissible(
       key: ValueKey(transaction.id),

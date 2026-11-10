@@ -7,13 +7,19 @@
 
 import 'package:expense_tracker/domain/entities/summary_result.dart';
 import 'package:expense_tracker/presentation/providers/balance_visibility_provider.dart';
+import 'package:expense_tracker/domain/entities/month_range.dart';
+import 'package:expense_tracker/domain/entities/transaction_entity.dart';
+import 'package:expense_tracker/presentation/providers/providers.dart';
 import 'package:expense_tracker/presentation/providers/theme_provider.dart';
-import 'package:expense_tracker/presentation/widgets/summary_card.dart';
+import 'package:expense_tracker/presentation/pages/home_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// The month the dashboard opens on, which is the one its provider key names.
+final MonthRange _today = MonthRange.of(DateTime.now());
 
 /// A month whose three figures are easy to tell apart on the card.
 SummaryResult _summary() => SummaryResult(
@@ -35,15 +41,27 @@ String _rupiah(double amount) =>
     NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0)
         .format(amount);
 
-/// The card on its own, over [prefs] as the store behind the eye.
+/// The dashboard's balance card, over [prefs] as the store behind the eye.
+///
+/// It was `SummaryCard`, which the redesign left behind: the dashboard draws
+/// `HomeBalanceCard` now, and a test of the eye on a widget nothing renders would
+/// keep passing while the real card lost the feature.
 Future<void> _pumpCard(WidgetTester tester, SharedPreferences prefs) async {
   await tester.pumpWidget(ProviderScope(
-    overrides: <Override>[sharedPreferencesProvider.overrideWithValue(prefs)],
-    child: MaterialApp(
-      home: Scaffold(
-        body: SummaryCard(summaryAsync: AsyncValue.data(_summary())),
+    overrides: <Override>[
+      sharedPreferencesProvider.overrideWithValue(prefs),
+      // The dashboard asks for the month it is showing, and the range is part of
+      // the provider's key: the override has to name the same one or it is never
+      // consulted. Any month will do — the figure is pinned, not queried.
+      summaryProvider(start: _today.start, end: _today.end)
+          .overrideWith((ref) async => _summary()),
+      transactionsStreamProvider.overrideWith(
+        (ref) => Stream<List<TransactionEntity>>.value(
+          const <TransactionEntity>[],
+        ),
       ),
-    ),
+    ],
+    child: MaterialApp(home: HomePage()),
   ));
   await tester.pumpAndSettle();
 }
