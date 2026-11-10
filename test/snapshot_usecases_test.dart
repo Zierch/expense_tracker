@@ -254,6 +254,89 @@ void main() {
       expect(customCats, hasLength(1));
     });
 
+    // A backup is a file, and a file outlives the release that wrote it. v1.10.0
+    // renamed Allowance to Pocket Money, so every snapshot taken between then and
+    // v1.11.0 names a subcategory this build no longer ships. Import matches on
+    // the name in the file, which would quietly create a second income
+    // subcategory beside the renamed one and split the month between them.
+    sqliteTest('a pre-1.11 backup naming Pocket Money lands in Allowance',
+        (AppDatabase db) async {
+      final ImportSnapshotUseCase importer =
+          ImportSnapshotUseCase(TransactionRepositoryImpl(db));
+
+      final Category income = (await db.getCategories(type: 'income')).first;
+      final List<String> before = (await db.getSubcategories(income.id))
+          .map((Subcategory s) => s.name)
+          .toList();
+      expect(before, contains('Allowance'),
+          reason: 'the schema seeds Allowance, so the import has something to '
+              'land on');
+
+      final String snapshot = _buildSnapshotJson(
+        transactions: <Map<String, dynamic>>[
+          _row(
+            date: '2026-10-04',
+            type: 'income',
+            amount: 500000.0,
+            category: 'Income',
+            subcategory: 'Pocket Money',
+            note: 'October allowance',
+          ),
+        ],
+      );
+
+      final SnapshotImportResult result = await importer(snapshot);
+      expect(result.imported, 1);
+
+      final List<String> after = (await db.getSubcategories(income.id))
+          .map((Subcategory s) => s.name)
+          .toList();
+      expect(after, isNot(contains('Pocket Money')),
+          reason: 'the old name is not a category this build offers; a second '
+              'row for it would split the same thing across two names');
+      expect(after.where((String n) => n == 'Allowance'), hasLength(1));
+    });
+
+    // The alias is for the app's retired default, not for a name in general. If
+    // the user made their own "Pocket Money", the file means theirs, and folding
+    // it into Allowance would move their rows into a category they did not pick.
+    sqliteTest('a Pocket Money the user made themselves is left alone',
+        (AppDatabase db) async {
+      final ImportSnapshotUseCase importer =
+          ImportSnapshotUseCase(TransactionRepositoryImpl(db));
+
+      final Category income = (await db.getCategories(type: 'income')).first;
+      final int ownPocketMoney =
+          await db.findOrCreateSubcategory('Pocket Money', income.id);
+
+      final String snapshot = _buildSnapshotJson(
+        transactions: <Map<String, dynamic>>[
+          _row(
+            date: '2026-10-05',
+            type: 'income',
+            amount: 250000.0,
+            category: 'Income',
+            subcategory: 'Pocket Money',
+            note: 'From mum',
+          ),
+        ],
+      );
+
+      final SnapshotImportResult result = await importer(snapshot);
+      expect(result.imported, 1);
+
+      final List<Subcategory> subs = await db.getSubcategories(income.id);
+      expect(subs.where((Subcategory s) => s.name == 'Pocket Money'),
+          hasLength(1));
+      expect(subs.firstWhere((Subcategory s) => s.name == 'Pocket Money').id,
+          ownPocketMoney);
+
+      final Transaction row = (await db.getAllTransactions()).single;
+      expect(row.subcategoryId, ownPocketMoney,
+          reason: 'the row has to follow the name the file used, because that '
+              'name already existed here');
+    });
+
     sqliteTest('repeat import is idempotent and does not duplicate rows',
         (AppDatabase db) async {
       final ImportSnapshotUseCase importer =

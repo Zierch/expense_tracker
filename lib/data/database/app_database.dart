@@ -343,15 +343,21 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<int> findOrCreateSubcategory(String name, int categoryId) async {
-    final Subcategory? existing = await (select(subcategories)
-          ..where((s) => s.name.equals(name) & s.categoryId.equals(categoryId))
-          ..limit(1))
-        .getSingleOrNull();
-    if (existing != null) return existing.id;
+    final int? existing = await findSubcategoryId(name, categoryId);
+    if (existing != null) return existing;
 
     return into(subcategories).insert(
       SubcategoriesCompanion.insert(name: name, categoryId: categoryId),
     );
+  }
+
+  /// The id of the subcategory called [name] under [categoryId], or `null`.
+  Future<int?> findSubcategoryId(String name, int categoryId) async {
+    final Subcategory? existing = await (select(subcategories)
+          ..where((s) => s.name.equals(name) & s.categoryId.equals(categoryId))
+          ..limit(1))
+        .getSingleOrNull();
+    return existing?.id;
   }
 
   /// The id of an existing transaction matching these values on [date]'s day,

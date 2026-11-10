@@ -228,7 +228,11 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
           FilledButton(
             onPressed: () {
               Navigator.of(dialogContext).pop();
-              ref.read(routerProvider).push('/backup');
+              // `go`, not `push`: Settings is the shell's third branch, so
+              // going to it moves the bottom bar with the page. Pushing drew
+              // the same page on top of the shell and left the bar on Home —
+              // the tab and the screen disagreed about where the user was.
+              ref.read(routerProvider).go('/backup');
             },
             child: const Text('Review'),
           ),

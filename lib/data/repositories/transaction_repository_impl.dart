@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
 import 'package:expense_tracker/domain/entities/import_transaction.dart';
+import 'package:expense_tracker/domain/entities/subcategory_aliases.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 
@@ -100,10 +101,21 @@ class TransactionRepositoryImpl implements TransactionRepository {
         final int categoryId = await _database.findOrCreateCategory(
             transaction.categoryName, transaction.type);
         final String? subcategoryName = transaction.subcategoryName;
+        // A backup names subcategories as strings, and a file outlives the
+        // release that wrote it: the ones the app itself renamed are folded back
+        // onto today's name here, so restoring a v1.10.x snapshot does not leave
+        // a second "Pocket Money" row beside "Allowance".
+        //
+        // A name that already exists locally wins, though. If the user made a
+        // "Pocket Money" of their own, the file means that one, not the app's
+        // retired default — so the alias only applies when the file's own name
+        // is not already here.
         final int? subcategoryId = subcategoryName == null
             ? null
             : await _database.findOrCreateSubcategory(
-                subcategoryName, categoryId);
+                await _importName(
+                    subcategoryName, transaction.type, categoryId),
+                categoryId);
 
         final int? matchId = await _database.findMatchingTransactionId(
           date: transaction.date,
@@ -136,6 +148,20 @@ class TransactionRepositoryImpl implements TransactionRepository {
 
       return ImportWriteResult(imported: imported, duplicates: duplicates);
     });
+  }
+
+  /// The name a file's subcategory should be stored under.
+  ///
+  /// Today's name, unless the file's own name is already a real subcategory
+  /// here — in which case the file is talking about that one. See
+  /// [resolveImportedSubcategoryName] for why any of this exists.
+  Future<String> _importName(String name, String type, int categoryId) async {
+    final String resolved = resolveImportedSubcategoryName(name, type);
+    if (resolved == name) return name;
+    if (await _database.findSubcategoryId(name, categoryId) != null) {
+      return name;
+    }
+    return resolved;
   }
 
   TransactionEntity _toEntity(TransactionWithNames row) {

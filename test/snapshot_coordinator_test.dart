@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:expense_tracker/data/database/app_database.dart';
+import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
 import 'package:expense_tracker/data/services/google_drive_service.dart'
     show BackupException;
 import 'package:expense_tracker/data/services/snapshot_coordinator.dart';
@@ -13,6 +15,8 @@ import 'package:expense_tracker/domain/usecases/export_snapshot_usecase.dart';
 import 'package:expense_tracker/domain/usecases/import_snapshot_usecase.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+
+import 'sqlite_support.dart';
 
 class _DummyClient extends http.BaseClient {
   @override
@@ -893,6 +897,54 @@ void main() {
 
       expect(repo.importCalls, 0);
       expect(repo.transactions, isEmpty);
+    });
+
+    // Sync goes through the same importer as a file restore, so the same rule
+    // has to hold here: a snapshot written before v1.11.0 names an income
+    // subcategory "Pocket Money", and this build ships "Allowance". Restoring it
+    // must land in the one the user sees today rather than make a second.
+    //
+    // This runs against a real database rather than the in-memory stand-in the
+    // rest of this group uses: the alias lives in the repository that writes the
+    // rows, and a fake repository would never exercise it.
+    sqliteTest('sync folds a pre-1.11 Pocket Money onto Allowance',
+        (AppDatabase db) async {
+      final TransactionRepositoryImpl repo = TransactionRepositoryImpl(db);
+      final _FakeSnapshotDriveService drive = _FakeSnapshotDriveService(
+        snapshots: const <Map<String, dynamic>>[
+          <String, dynamic>{'id': 'snap-1', 'name': 'snapshot.json'},
+        ],
+        fileContents: <String, String>{
+          'snap-1': _snapshotJson(
+            transactions: <Map<String, dynamic>>[
+              _row(
+                type: 'income',
+                category: 'Income',
+                subcategory: 'Pocket Money',
+                note: 'October allowance',
+              ),
+            ],
+          ),
+        },
+      );
+
+      final SnapshotCoordinator coordinator = SnapshotCoordinator(
+        drive,
+        ExportSnapshotUseCase(repo),
+        ImportSnapshotUseCase(repo),
+      );
+
+      final SnapshotImportResult result = await coordinator.sync();
+      expect(result.imported, 1);
+
+      final Category income = (await db.getCategories(type: 'income')).first;
+      final List<String> names = (await db.getSubcategories(income.id))
+          .map((Subcategory s) => s.name)
+          .toList();
+      expect(names, contains('Allowance'));
+      expect(names, isNot(contains('Pocket Money')),
+          reason: 'the snapshot predates the rename, and restoring it must not '
+              'reintroduce the retired name');
     });
 
     test('repeated sync is idempotent and preserves local transaction count',
