@@ -8,6 +8,7 @@ analyzer:
     # reports drift that nobody can fix by hand.
     - "**/*.g.dart"
     - "**/*.freezed.dart"
+    - web/**
 include: package:flutter_lints/flutter.yaml
 
 linter:

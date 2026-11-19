@@ -1,9 +1,10 @@
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
-import 'dart:io';
+
+// `drift/native.dart` pulls in `dart:ffi`, which cannot compile for the web.
+// Choosing the implementation at import time keeps Android's file-backed
+// SQLite exactly as it was while the web build sees only the throwing stub.
+import 'database_connection_io.dart' if (dart.library.html) 'database_connection_web.dart';
 
 part 'app_database.g.dart';
 
@@ -35,7 +36,7 @@ class Transactions extends Table {
 
 @DriftDatabase(tables: [Categories, Subcategories, Transactions])
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  AppDatabase() : super(openConnection());
 
   /// Opens the database on [executor] instead of the on-device file.
   ///
@@ -516,10 +517,3 @@ class TransactionWithNames {
   });
 }
 
-LazyDatabase _openConnection() {
-  return LazyDatabase(() async {
-    final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'expense_tracker.sqlite'));
-    return NativeDatabase.createInBackground(file);
-  });
-}

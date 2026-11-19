@@ -2,7 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:expense_tracker/presentation/pages/splash_page.dart';
+import 'package:expense_tracker/presentation/pages/login_page.dart';
+import 'package:expense_tracker/presentation/pages/web_settings_page.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:expense_tracker/presentation/pages/home_page.dart';
 import 'package:expense_tracker/presentation/pages/add_transaction_page.dart';
@@ -58,7 +62,20 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: '/',
+    // Android has no account and must keep opening on the dashboard. On web an
+    // unauthenticated visit goes to /login whether it starts there or deep-links
+    // into /statistics or /edit/1.
+    redirect: (BuildContext context, GoRouterState state) {
+      if (!kIsWeb) return null;
+      final bool signedIn = Supabase.instance.client.auth.currentSession != null;
+      final bool onLogin = state.matchedLocation == '/login';
+      if (!signedIn && !onLogin) return '/login';
+      if (signedIn && onLogin) return '/';
+      return null;
+    },
     routes: [
+      if (kIsWeb)
+        GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => Scaffold(
           body: shell,
@@ -83,7 +100,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(path: '/statistics', builder: (context, state) => const StatisticsPage()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/backup', builder: (context, state) => const BackupPage()),
+            GoRoute(
+              path: '/backup',
+              builder: (context, state) => kIsWeb
+                  ? const WebSettingsPage()
+                  : const BackupPage(),
+            ),
           ]),
         ],
       ),
@@ -108,6 +130,22 @@ Future<void> main() async {
   // production — so the provider stays unoverridden (null = no memory of a
   // theme choice) and the app opens on the system theme instead.
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Web gets its data from Supabase, so it is the only platform that needs the
+  // client. The values come from `--dart-define` at build time; the anon key is
+  // public by design and RLS, not secrecy, is what limits access. Android never
+  // reads either value and stays entirely offline.
+  if (kIsWeb) {
+    const String url = String.fromEnvironment('SUPABASE_URL');
+    const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    if (url.isEmpty || anonKey.isEmpty) {
+      throw StateError(
+        'Web builds need SUPABASE_URL and SUPABASE_ANON_KEY from --dart-define.',
+      );
+    }
+    await Supabase.initialize(url: url, anonKey: anonKey);
+  }
+
   SharedPreferences? prefs;
   try {
     prefs = await SharedPreferences.getInstance();
@@ -152,9 +190,15 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
     // The launch check lives entirely in the background: once the app has
     // drawn its first frame, the request runs out from under the UI and only
     // ever *pops up* when a newer release actually exists.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(ref.read(appUpdateControllerProvider.notifier).checkOnLaunch());
-    });
+    // The update check talks to Android's installer through a MethodChannel.
+    // Vercel deploys the web build, so there is nothing for it to check there.
+    if (!kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(
+          ref.read(appUpdateControllerProvider.notifier).checkOnLaunch(),
+        );
+      });
+    }
   }
 
   @override

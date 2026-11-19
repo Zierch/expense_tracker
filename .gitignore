@@ -85,3 +85,6 @@ docs/audit/
 # Scratch notes that are deliberately never published.
 PRIVATE.md
 private/
+
+# Supabase CLI local link metadata (not part of the app)
+/supabase/.temp/

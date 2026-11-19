@@ -1,9 +1,11 @@
 # Privacy Policy — Expense Tracker
 
-_Last updated: 21 October 2026_
+_Last updated: 19 November 2026_
 
-Expense Tracker is an offline, Android-only personal finance app. This policy
-describes exactly what the app does with your information. It is written to be
+Expense Tracker has two builds. The Android app is offline and keeps everything
+in a local database on your phone. The web app stores your records in Supabase,
+under an account you sign in to. They do not sync with each other; a transaction
+added on one appears only there. This policy describes both, and is written to be
 read, not to be survived.
 
 ## The short version
@@ -19,8 +21,35 @@ system-level backup is switched off for this app, and the newer cross-platform
 transfer route has no counterpart for it to carry anything to; see "Android Auto
 Backup is turned off" below.
 
-The developer of this app cannot see your data. There is no backend that could
-receive it.
+On Android the developer cannot see your data; there is no backend that could
+receive it. On web the data sits in the project's Supabase database, protected by
+Row Level Security so that only the signed-in owner can read or write their own
+rows. The developer operates that database but has no application that displays
+your records.
+
+## The web build
+
+The web build is a different store, not a second copy of the Android database.
+
+- Records are saved in a Supabase PostgreSQL database in the
+  `ap-southeast-1` (Singapore) region.
+- You sign in with an email address and password. Supabase owns the account; the
+  app has no account system of its own.
+- Row Level Security is enabled on `categories`, `subcategories` and
+  `transactions`. A row is readable and writable only when its `user_id` equals
+  the signed-in user's id. This is what limits an anon key, which is present in
+  every web build, to your data alone.
+- The app does not send analytics, crash reports or advertising data. The only
+  network traffic is to Supabase for your own records.
+- Signing in stores a session in your browser. Signing out clears that session;
+  it does not delete your records.
+
+### Deleting your account and data
+
+Sign out in Settings, then ask the operator of the deployment to delete your
+SupabaseAuth user. Deleting the `auth.users` row cascades to that user's
+categories, subcategories and transactions — the foreign keys in
+`docs/supabase_schema.sql` are `ON DELETE CASCADE`, so no records remain behind.
 
 ## What the app stores on your device
 
@@ -155,8 +184,9 @@ screen is the one supported way to get your data off the device.
 
 Android 16 QPR2 (API level 36.1) added a third route, cross-platform transfer.
 It moves data between the same app on two platforms, and only to the counterpart
-named in the rules file. This app is Android-only, declares no such counterpart,
-and has no iOS version to receive anything, so that route has nothing to carry.
+named in the rules file. The Android build declares no such counterpart: it has
+no iOS version, and the web build is served separately rather than receiving a
+device transfer. That route therefore has nothing to carry from Android.
 
 ## Revoking access
 

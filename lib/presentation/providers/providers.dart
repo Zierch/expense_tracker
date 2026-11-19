@@ -1,11 +1,14 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:expense_tracker/data/database/app_database.dart';
+import 'package:expense_tracker/data/repositories/supabase_transaction_repository.dart';
 import 'package:expense_tracker/data/repositories/transaction_repository_impl.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/domain/entities/summary_result.dart';
 import 'package:expense_tracker/domain/repositories/transaction_repository.dart';
 import 'package:expense_tracker/domain/usecases/transaction_usecases.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 part 'providers.g.dart';
 
@@ -16,6 +19,13 @@ AppDatabase database(Ref ref) {
 
 @riverpod
 TransactionRepository transactionRepository(Ref ref) {
+  // One boundary, two backends. Android keeps its local Drift database; the web
+  // build talks to Supabase. `kIsWeb` is a const, so the unused branch is
+  // removed from each release build. Nothing above this provider knows which
+  // one it is talking to — the domain interface is identical.
+  if (kIsWeb) {
+    return SupabaseTransactionRepository(Supabase.instance.client);
+  }
   return TransactionRepositoryImpl(ref.watch(databaseProvider));
 }
 

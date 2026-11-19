@@ -110,8 +110,23 @@ Requires Android 7.0 or newer (minSdk 24).
 | Sign-in and upload | `google_sign_in` plus the Drive v3 REST API |
 | PDF report | `pdf` to draw it, `printing` to hand it to the share sheet |
 
-The app is deliberately Android-only. Drift needs a native SQLite library, so
-there is no web target and `flutter run -d chrome` will not work.
+The Android app is offline by design: its records live in a local SQLite
+database, and nothing leaves the device unless you tap an export. There is also
+a web build, served from Vercel, that stores the same records in Supabase behind
+an email-and-password login. The two do not sync; see [PRIVACY.md](PRIVACY.md)
+for what each one stores.
+
+The web build needs two values at build time:
+
+```sh
+flutter build web --release \
+  --dart-define=SUPABASE_URL=<project-url> \
+  --dart-define=SUPABASE_ANON_KEY=<anon-key>
+```
+
+The anon key is public by design — Supabase Row Level Security, not secrecy, is
+what confines each user to their own rows. The service role key must never be
+used in a web build. Setup steps live in [docs/web-setup.md](docs/web-setup.md).
 
 ## Building from source
 
