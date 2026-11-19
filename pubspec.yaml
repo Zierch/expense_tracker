@@ -47,6 +47,10 @@ dependencies:
   path_provider_android: '>=2.2.23 <2.3.0'
 
 dev_dependencies:
+  # Pinned: a newer Flutter SDK resolves meta 1.19.0, which rewrites pubspec.lock
+  # during CI's `build_runner` sync check and turns a green build into a failure.
+  # Pinning the transitive version here keeps local and CI resolution identical.
+  meta: 1.18.3
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
