@@ -68,14 +68,16 @@ jobs:
       # The Drift, Freezed and Riverpod outputs are committed, so a change to a
       # table or a provider that was never regenerated ships a stale database
       # layer. Reading the generated file does not reveal that; regenerating and
-      # diffing does. pubspec.lock is committed too, so this compares like with
-      # like rather than whatever the packages published this week.
+      # diffing does. Only generated Dart is compared: pubspec.lock can change
+      # when CI's Flutter SDK is newer than the one that wrote the lockfile,
+      # and that is not a stale generator output.
       - name: Check generated code is in sync
         run: |
           dart run build_runner build --delete-conflicting-outputs
-          if [ -n "$(git status --porcelain)" ]; then
-            git status --porcelain
-            git diff
+          changed="$(git status --porcelain | grep -E '\.g\.dart$|\.freezed\.dart$' || true)"
+          if [ -n "$changed" ]; then
+            echo "$changed"
+            git diff -- '*.g.dart' '*.freezed.dart'
             echo "::error::Generated code is out of date. Run 'dart run build_runner build --delete-conflicting-outputs' and commit the result."
             exit 1
           fi
