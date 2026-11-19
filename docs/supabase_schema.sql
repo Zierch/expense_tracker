@@ -18,7 +18,8 @@ create table if not exists public.categories (
   name        text not null check (char_length(name) between 1 and 50),
   type        text not null check (type in ('income', 'expense')),
   created_at  timestamptz not null default now(),
-  unique (user_id, name, type)
+  unique (user_id, name, type),
+  unique (user_id, id)
 );
 
 create index if not exists categories_user_id_idx on public.categories (user_id);
@@ -39,7 +40,9 @@ create table if not exists public.subcategories (
   category_id bigint not null references public.categories(id) on delete cascade,
   name        text not null check (char_length(name) between 1 and 50),
   created_at  timestamptz not null default now(),
-  unique (user_id, category_id, name)
+  unique (user_id, category_id, name),
+  unique (user_id, id),
+  foreign key (user_id, category_id) references public.categories (user_id, id)
 );
 
 create index if not exists subcategories_user_id_idx
@@ -64,7 +67,9 @@ create table if not exists public.transactions (
   subcategory_id bigint references public.subcategories(id),
   note           text check (note is null or char_length(note) <= 500),
   date           timestamptz not null,
-  created_at     timestamptz not null default now()
+  created_at     timestamptz not null default now(),
+  foreign key (user_id, category_id) references public.categories (user_id, id),
+  foreign key (user_id, subcategory_id) references public.subcategories (user_id, id)
 );
 
 -- The date index is what makes the month, week and export reads stay fast as
@@ -80,6 +85,15 @@ create policy transactions_owner on public.transactions
   for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- ------------------------------------------------------------ fk ownership
+--
+-- RLS checks the user_id of the row being written, but Postgres FK checks ignore
+-- RLS. A plain FK to categories.id would let a user point their own transaction
+-- at another user's category; RLS would then hide that category from the writer
+-- and the `categories!inner` embed would make the row vanish from their own
+-- reads. Pairing every FK with user_id keeps references inside one account.
+-- See migration 20261119000002_web_fk_ownership.sql.
 
 -- ---------------------------------------------------------------- seed notes
 --

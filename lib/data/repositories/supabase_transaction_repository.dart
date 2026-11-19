@@ -62,8 +62,13 @@ class SupabaseTransactionRepository implements TransactionRepository {
   // Embed the names: the snapshot and month exporters write category and
   // subcategory by name, and a bare `select()` would give them nulls even though
   // the rows are there.
+  // The FK hints are required: adding the owner-scoped foreign keys in
+  // migration 20261119000002 gave transactions two FKs to each parent table,
+  // and PostgREST otherwise answers PGRST201 "could not embed because more
+  // than one relationship was found". `!inner` keeps the old join semantics.
   static const String _withNames =
-      '*, categories!inner(name), subcategories(name)';
+      '*, categories!inner!transactions_category_id_fkey(name), '
+      'subcategories!transactions_subcategory_id_fkey(name)';
 
   Future<List<dynamic>> _orderedRows() => _client
       .from('transactions')
@@ -207,7 +212,10 @@ class SupabaseTransactionRepository implements TransactionRepository {
       {DateTime? start, DateTime? end}) async {
     var query = _client
         .from('transactions')
-        .select('amount, date, categories!inner(name), subcategories(name)')
+        .select(
+          'amount, date, categories!inner!transactions_category_id_fkey(name), '
+          'subcategories!transactions_subcategory_id_fkey(name)',
+        )
         .eq('user_id', _userId)
         .eq('type', type);
     if (start != null) {

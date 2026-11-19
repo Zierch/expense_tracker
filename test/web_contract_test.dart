@@ -72,47 +72,43 @@ void main() {
       final String repo = File('lib/data/repositories/supabase_transaction_repository.dart')
           .readAsStringSync();
 
-      // _toEntity (line 85-98) reads row['categories']['name'] and
-      // row['subcategories']['name']. Supabase doesn't auto-embed FKs — you
-      // must request them in .select(). Without join, row['categories'] is null,
-      // _toEntity crashes or returns null categoryName (every transaction shows
-      // "Uncategorized" on home page). BLOCKER: app unusable on web.
-      //
-      // Fix: .select('*, categories!inner(name), subcategories(name)')
-      // Must appear in: _orderedRows (getAllTransactions, watchAllTransactions)
-      // and getTransactionsByDateRange.
+      // _toEntity reads row['categories']['name'] and row['subcategories']['name'].
+      // Supabase doesn't auto-embed FKs — you must request them in .select().
+      // Migration 20261119000002 added owner-scoped FKs, so transactions now has
+      // two FKs to each parent table. Without the FK hint PostgREST answers
+      // PGRST201 "could not embed because more than one relationship was found"
+      // and every read fails.
+      const String categoryJoin =
+          'categories!inner!transactions_category_id_fkey(name)';
+      const String subcategoryJoin =
+          'subcategories!transactions_subcategory_id_fkey(name)';
+
       expect(
         repo,
-        contains('categories!inner(name)'),
+        contains(categoryJoin),
         reason:
-            'BLOCKER: Supabase queries must embed categories via '
-            '.select(\'*, categories!inner(name), subcategories(name)\'). '
-            'Without this, _toEntity reads row[\'categories\'] = null and crashes '
-            'or shows "Uncategorized" for every transaction. getAllTransactions, '
-            'watchAllTransactions, getTransactionsByDateRange all broken. '
-            'Pattern already correct in _byCategory (line 204), copy to other queries.',
+            'BLOCKER: category embeds must name the FK explicitly. Without the '
+            'hint PostgREST returns PGRST201 and every web read fails.',
       );
 
       expect(
         repo,
-        contains('subcategories(name)'),
+        contains(subcategoryJoin),
         reason:
-            'BLOCKER: Supabase queries must embed subcategories via '
-            '.select(\'*, categories!inner(name), subcategories(name)\'). '
-            'Left outer join (nullable FK). Without this, subcategoryName always null.',
+            'BLOCKER: subcategory embeds must name the FK explicitly. Without '
+            'the hint PostgREST returns PGRST201 and every web read fails.',
       );
 
-      // Should appear at least twice: _orderedRows + getTransactionsByDateRange
-      final int categoriesJoinCount =
-          'categories!inner(name)'.allMatches(repo).length;
+      // Twice: _withNames (used by _orderedRows and getTransactionsByDateRange)
+      // and the aggregate query in _byCategory.
+      final int categoriesJoinCount = categoryJoin.allMatches(repo).length;
       expect(
         categoriesJoinCount,
         greaterThanOrEqualTo(2),
         reason:
-            'BLOCKER: categories!inner(name) must appear at least twice: '
-            'once in _orderedRows (getAllTransactions, watchAllTransactions) '
-            'and once in getTransactionsByDateRange. Found only $categoriesJoinCount. '
-            'All read operations must embed categories or _toEntity crashes.',
+            'BLOCKER: every category embed must name the FK explicitly. '
+            'Found only $categoriesJoinCount. All read operations must embed '
+            'categories or _toEntity crashes.',
       );
     });
 
