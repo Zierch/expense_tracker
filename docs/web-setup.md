@@ -177,3 +177,20 @@ ditulis ulang di workflow.
 
 Sebelum itu, saya bisa menyelesaikan kode + build web memakai dart-define dummy.
 Yang **tidak** bisa saya buktikan tanpa project asli: login, CRUD, dan RLS.
+
+## 5. Akun demo untuk portofolio
+
+Situs live: https://expense-tracker-web-ruddy-sigma.vercel.app
+
+| | |
+|---|---|
+| Email | `demo@expensetracker.app` |
+| Password | `Demo12345!` |
+
+Akun ini berisi 10 transaksi **palsu** dari kategori bawaan — bukan data
+siapa-siapa. Boleh dipublikasikan di portofolio supaya pembuka tautan bisa
+langsung melihat dashboard dan statistik yang terisi. Jangan pakai akun ini
+untuk data sungguhan: kata sandinya sengaja dibagikan.
+
+Akun `usera@example.test` dan `userb@example.test` dipakai untuk uji RLS dan
+tidak boleh dicantumkan di portofolio.
