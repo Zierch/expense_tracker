@@ -36,6 +36,25 @@ is already at the top:
 
 <img src="assets/screenshots/add-transaction-dark.gif" width="240" alt="Adding a transaction, end to end">
 
+### Web
+
+The same screens in Chrome, at a phone-sized window. The data here is seed
+transactions in a test Supabase account — no real spending and no personal
+email. The Android screenshots above remain the phone app; the web ones below
+are the deployed Vercel build.
+
+**Dark theme**
+
+| Dashboard | Statistics | Settings |
+| --- | --- | --- |
+| <img src="assets/screenshots/web-dashboard-dark.png" width="240" alt="Web dashboard, dark"> | <img src="assets/screenshots/web-statistics-dark.png" width="240" alt="Web statistics, dark"> | <img src="assets/screenshots/web-settings-dark.png" width="240" alt="Web settings, dark"> |
+
+**Light theme**
+
+| Dashboard | Statistics | Settings |
+| --- | --- | --- |
+| <img src="assets/screenshots/web-dashboard-light.png" width="240" alt="Web dashboard, light"> | <img src="assets/screenshots/web-statistics-light.png" width="240" alt="Web statistics, light"> | <img src="assets/screenshots/web-settings-light.png" width="240" alt="Web settings, light"> |
+
 ## Download
 
 Grab the latest APK from the
