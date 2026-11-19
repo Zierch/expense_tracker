@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -73,6 +74,19 @@ class _HomePageState extends ConsumerState<HomePage> {
         ref.watch(summaryProvider(start: range.start, end: range.end));
 
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // The phone layout is also used by narrow browser windows. A wide web
+    // window gets the desktop arrangement from the FigCraft design: two cards
+    // side by side and the rows in a table instead of a stack of tiles.
+    if (kIsWeb && MediaQuery.sizeOf(context).width >= 1000) {
+      return _buildDesktop(
+        context: context,
+        range: range,
+        transactionsAsync: transactionsAsync,
+        summaryAsync: summaryAsync,
+        isDark: isDark,
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -208,6 +222,238 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDesktop({
+    required BuildContext context,
+    required MonthRange range,
+    required AsyncValue<List<TransactionEntity>> transactionsAsync,
+    required AsyncValue<SummaryResult> summaryAsync,
+    required bool isDark,
+  }) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Expense Tracker',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        automaticallyImplyLeading: false,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: Colors.transparent,
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: <Widget>[
+            MonthSelector(month: _selectedMonth, onChanged: _selectMonth),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Expanded(child: HomeBalanceCard(summaryAsync: summaryAsync)),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _desktopSummaryCard(transactionsAsync, range, isDark),
+                ),
+              ],
+            ),
+            HomeActivityCard(onAdd: () => context.push('/add')),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+              child: Text(
+                'Recent Transactions',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: isDark
+                      ? _HomeDesign.darkText
+                      : _HomeDesign.lightText,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: transactionsAsync.when(
+                data: (transactions) {
+                  final List<TransactionEntity> rows = transactions
+                      .where((t) => range.contains(t.date))
+                      .toList()
+                    ..sort(newestFirst);
+                  if (rows.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 80),
+                      child: Center(child: Text('No transactions yet')),
+                    );
+                  }
+                  return _desktopTable(context, rows, isDark);
+                },
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (Object error, _) => Padding(
+                  padding: const EdgeInsets.all(40),
+                  child: Center(child: Text('Error: $error')),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _desktopSummaryCard(
+    AsyncValue<List<TransactionEntity>> transactionsAsync,
+    MonthRange range,
+    bool isDark,
+  ) {
+    final int income = transactionsAsync.value
+            ?.where((t) => range.contains(t.date) && t.isIncome)
+            .length ??
+        0;
+    final int expense = transactionsAsync.value
+            ?.where((t) => range.contains(t.date) && t.isExpense)
+            .length ??
+        0;
+    return Container(
+      margin: const EdgeInsets.symmetric(
+        horizontal: _HomeDesign.spacingScreen,
+        vertical: _HomeDesign.spacingSmall,
+      ),
+      padding: const EdgeInsets.all(_HomeDesign.spacingScreen),
+      decoration: BoxDecoration(
+        color: isDark ? _HomeDesign.darkTinted : Colors.white,
+        borderRadius: BorderRadius.circular(_HomeDesign.radiusHero),
+        border: Border.all(
+          color: isDark ? _HomeDesign.darkBorder : _HomeDesign.lightActivityBorder,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'THIS MONTH',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: isDark ? _HomeDesign.darkMuted : _HomeDesign.lightMuted,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '${income + expense} transactions',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: isDark ? _HomeDesign.darkText : _HomeDesign.lightText,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$expense expense  ·  $income income',
+            style: TextStyle(
+              fontSize: 14,
+              color: isDark ? _HomeDesign.darkMuted : _HomeDesign.lightMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _desktopTable(
+    BuildContext context,
+    List<TransactionEntity> rows,
+    bool isDark,
+  ) {
+    final TextStyle muted = TextStyle(
+      fontSize: 13,
+      color: isDark ? _HomeDesign.darkMuted : _HomeDesign.lightMuted,
+    );
+    final TextStyle body = TextStyle(
+      fontSize: 14,
+      color: isDark ? _HomeDesign.darkText : _HomeDesign.lightText,
+    );
+    final NumberFormat money =
+        NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? _HomeDesign.darkTinted : Colors.white,
+        borderRadius: BorderRadius.circular(_HomeDesign.radiusActivity),
+        border: Border.all(
+          color: isDark ? _HomeDesign.darkBorder : _HomeDesign.lightActivityBorder,
+        ),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              SizedBox(width: 220, child: Text('CATEGORY', style: muted)),
+              Expanded(child: Text('NOTE', style: muted)),
+              SizedBox(width: 150, child: Text('DATE', style: muted)),
+              SizedBox(
+                width: 160,
+                child: Text('AMOUNT', style: muted, textAlign: TextAlign.right),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...rows.map(
+            (transaction) => InkWell(
+              onTap: () => context.push('/edit/${transaction.id}'),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  children: <Widget>[
+                    SizedBox(
+                      width: 220,
+                      child: Text(
+                        transaction.displayCategory,
+                        style: body.copyWith(fontWeight: FontWeight.w700),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        transaction.note ?? '—',
+                        style: muted,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 150,
+                      child: Text(
+                        DateFormat('dd MMM yyyy').format(transaction.date),
+                        style: muted,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 160,
+                      child: Text(
+                        '${transaction.isIncome ? '+' : '-'}${money.format(transaction.amount)}',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: transaction.isIncome
+                              ? const Color(0xFF24804A)
+                              : const Color(0xFFC53030),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

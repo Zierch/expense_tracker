@@ -77,20 +77,72 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (kIsWeb)
         GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       StatefulShellRoute.indexedStack(
-        builder: (context, state, shell) => Scaffold(
-          body: shell,
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: shell.currentIndex,
-            onDestinationSelected: (index) => shell.goBranch(
-              index,
-              initialLocation: index == shell.currentIndex,
-            ),
-            destinations: const [
-              NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
-              NavigationDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: 'Statistics'),
-              NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
-            ],
-          ),
+        // A phone gets the bottom bar. A wide web window gets a side rail and
+        // a centred content column: stretching the phone layout across a
+        // 1920px monitor made every card enormous. Android always takes the
+        // first branch, unchanged.
+        builder: (context, state, shell) => LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints size) {
+            final bool wide = kIsWeb && size.maxWidth >= 1000;
+            if (!wide) {
+              return Scaffold(
+                body: shell,
+                bottomNavigationBar: NavigationBar(
+                  selectedIndex: shell.currentIndex,
+                  onDestinationSelected: (index) => shell.goBranch(
+                    index,
+                    initialLocation: index == shell.currentIndex,
+                  ),
+                  destinations: const [
+                    NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+                    NavigationDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: 'Statistics'),
+                    NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
+                  ],
+                ),
+              );
+            }
+            return Scaffold(
+              body: Row(
+                children: <Widget>[
+                  NavigationRail(
+                    selectedIndex: shell.currentIndex,
+                    onDestinationSelected: (index) => shell.goBranch(
+                      index,
+                      initialLocation: index == shell.currentIndex,
+                    ),
+                    labelType: NavigationRailLabelType.all,
+                    destinations: const <NavigationRailDestination>[
+                      NavigationRailDestination(
+                        icon: Icon(Icons.home_outlined),
+                        selectedIcon: Icon(Icons.home),
+                        label: Text('Home'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.bar_chart_outlined),
+                        selectedIcon: Icon(Icons.bar_chart),
+                        label: Text('Statistics'),
+                      ),
+                      NavigationRailDestination(
+                        icon: Icon(Icons.settings_outlined),
+                        selectedIcon: Icon(Icons.settings),
+                        label: Text('Settings'),
+                      ),
+                    ],
+                  ),
+                  const VerticalDivider(width: 1),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1120),
+                        child: shell,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
         branches: [
           StatefulShellBranch(routes: [
