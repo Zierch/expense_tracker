@@ -59,7 +59,9 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           cp vercel.json build/web/vercel.json
-          npm install --global vercel
+          # Pinned: an unpinned global install would run whatever CLI version
+          # happens to be latest on the day the workflow fires.
+          npm install --global vercel@66.2.0
           cd build/web
           vercel deploy --prod --yes \
             --token "$VERCEL_TOKEN" \

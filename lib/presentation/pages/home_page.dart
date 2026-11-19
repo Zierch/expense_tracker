@@ -9,6 +9,7 @@ import 'package:expense_tracker/domain/entities/summary_result.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/presentation/providers/balance_visibility_provider.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
+import 'package:expense_tracker/presentation/theme/web_desktop_style.dart';
 import 'package:expense_tracker/presentation/widgets/month_selector.dart';
 import 'package:expense_tracker/presentation/widgets/transaction_tile.dart';
 
@@ -84,7 +85,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         range: range,
         transactionsAsync: transactionsAsync,
         summaryAsync: summaryAsync,
-        isDark: isDark,
       );
     }
 
@@ -231,135 +231,283 @@ class _HomePageState extends ConsumerState<HomePage> {
     required MonthRange range,
     required AsyncValue<List<TransactionEntity>> transactionsAsync,
     required AsyncValue<SummaryResult> summaryAsync,
-    required bool isDark,
   }) {
+    const TextStyle heading = TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.bold,
+      color: WebDesktopStyle.text,
+    );
+    final NumberFormat money =
+        NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+    // AsyncValue.value throws on an error state. The table handles errors in
+    // its own `when`; these two cards must not take the whole page down.
+    final SummaryResult? summary =
+        summaryAsync.maybeWhen(data: (value) => value, orElse: () => null);
+    final List<TransactionEntity>? loaded =
+        transactionsAsync.maybeWhen(data: (value) => value, orElse: () => null);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Expense Tracker',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        automaticallyImplyLeading: false,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        backgroundColor: Colors.transparent,
-      ),
+      backgroundColor: WebDesktopStyle.background,
       body: RefreshIndicator(
         onRefresh: _refresh,
-        child: ListView(
+        child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: <Widget>[
-            MonthSelector(month: _selectedMonth, onChanged: _selectMonth),
+          padding: const EdgeInsets.fromLTRB(48, 40, 48, 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Expanded(child: HomeBalanceCard(summaryAsync: summaryAsync)),
-                const SizedBox(width: 16),
                 Expanded(
-                  child: _desktopSummaryCard(transactionsAsync, range, isDark),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Text(
+                        'Overview',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                          color: WebDesktopStyle.text,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _desktopMonthLabel(context),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: () => context.push('/add'),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add'),
+                  ),
                 ),
               ],
             ),
-            HomeActivityCard(onAdd: () => context.push('/add')),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-              child: Text(
-                'Recent Transactions',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: isDark
-                      ? _HomeDesign.darkText
-                      : _HomeDesign.lightText,
-                ),
+            const SizedBox(height: 28),
+            SizedBox(
+              height: 200,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Expanded(child: _desktopBalanceCard(summary, money)),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _desktopSummaryCard(loaded, range),
+                  ),
+                ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: transactionsAsync.when(
-                data: (transactions) {
-                  final List<TransactionEntity> rows = transactions
-                      .where((t) => range.contains(t.date))
-                      .toList()
-                    ..sort(newestFirst);
-                  if (rows.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 80),
-                      child: Center(child: Text('No transactions yet')),
-                    );
-                  }
-                  return _desktopTable(context, rows, isDark);
-                },
-                loading: () => const Padding(
-                  padding: EdgeInsets.all(40),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-                error: (Object error, _) => Padding(
-                  padding: const EdgeInsets.all(40),
-                  child: Center(child: Text('Error: $error')),
-                ),
+            const SizedBox(height: 20),
+            Container(
+              decoration: BoxDecoration(
+          color: WebDesktopStyle.card,
+          borderRadius: BorderRadius.circular(20),
+        ),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text('Recent Transactions', style: heading),
+                  const SizedBox(height: 12),
+                  transactionsAsync.when(
+                    data: (transactions) {
+                      final List<TransactionEntity> rows = transactions
+                          .where((t) => range.contains(t.date))
+                          .toList()
+                        ..sort(newestFirst);
+                      if (rows.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 64),
+                          child: Center(
+                            child: Text(
+                              'No transactions yet',
+                              style: TextStyle(color: WebDesktopStyle.muted),
+                            ),
+                          ),
+                        );
+                      }
+                      return _desktopTable(context, rows, money);
+                    },
+                    loading: () => const Padding(
+                      padding: EdgeInsets.all(40),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                    error: (Object error, _) => Padding(
+                      padding: const EdgeInsets.all(40),
+                      child: Center(child: Text('Error: $error')),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 24),
           ],
         ),
+      ),
       ),
     );
   }
 
+  Widget _desktopMonthLabel(BuildContext context) => InkWell(
+        onTap: () async {
+          final DateTime? picked = await showMonthPicker(
+            context,
+            selected: _selectedMonth,
+            firstMonth: DateTime(2020),
+            lastMonth: DateTime.now(),
+          );
+          if (picked != null) _selectMonth(picked);
+        },
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              DateFormat('MMMM yyyy').format(_selectedMonth),
+              style: const TextStyle(
+                fontSize: 15,
+                color: WebDesktopStyle.muted,
+              ),
+            ),
+            const SizedBox(width: 2),
+            const Icon(Icons.arrow_drop_down,
+                size: 18, color: WebDesktopStyle.muted),
+          ],
+        ),
+      );
+
+  Widget _desktopBalanceCard(SummaryResult? summary, NumberFormat money) {
+    final double balance = summary?.balance ?? 0;
+    final double income = summary?.totalIncome ?? 0;
+    final double expense = summary?.totalExpense ?? 0;
+    return Container(
+      height: 200,
+      decoration: BoxDecoration(
+          color: WebDesktopStyle.card,
+          borderRadius: BorderRadius.circular(20),
+        ),
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text('TOTAL BALANCE',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: WebDesktopStyle.muted,
+                letterSpacing: 0.4,
+              )),
+          const SizedBox(height: 12),
+          Text(
+            money.format(balance),
+            style: const TextStyle(
+              fontSize: 36,
+              fontWeight: FontWeight.bold,
+              color: WebDesktopStyle.text,
+            ),
+          ),
+          const Spacer(),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _desktopChip(
+                  'Income',
+                  money.format(income),
+                  Icons.north_east,
+                  WebDesktopStyle.positive,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _desktopChip(
+                  'Expense',
+                  money.format(expense),
+                  Icons.south_east,
+                  WebDesktopStyle.negative,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _desktopChip(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) =>
+      Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: WebDesktopStyle.chip,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: <Widget>[
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(fontSize: 12, color: color)),
+            const Spacer(),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      );
+
   Widget _desktopSummaryCard(
-    AsyncValue<List<TransactionEntity>> transactionsAsync,
+    List<TransactionEntity>? transactions,
     MonthRange range,
-    bool isDark,
   ) {
-    final int income = transactionsAsync.value
+    final int income = transactions
             ?.where((t) => range.contains(t.date) && t.isIncome)
             .length ??
         0;
-    final int expense = transactionsAsync.value
+    final int expense = transactions
             ?.where((t) => range.contains(t.date) && t.isExpense)
             .length ??
         0;
     return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: _HomeDesign.spacingScreen,
-        vertical: _HomeDesign.spacingSmall,
-      ),
-      padding: const EdgeInsets.all(_HomeDesign.spacingScreen),
+      height: 200,
       decoration: BoxDecoration(
-        color: isDark ? _HomeDesign.darkTinted : Colors.white,
-        borderRadius: BorderRadius.circular(_HomeDesign.radiusHero),
-        border: Border.all(
-          color: isDark ? _HomeDesign.darkBorder : _HomeDesign.lightActivityBorder,
+          color: WebDesktopStyle.card,
+          borderRadius: BorderRadius.circular(20),
         ),
-      ),
+      padding: const EdgeInsets.all(32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
+          const Text(
             'THIS MONTH',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.bold,
-              color: isDark ? _HomeDesign.darkMuted : _HomeDesign.lightMuted,
+              color: WebDesktopStyle.muted,
+              letterSpacing: 0.4,
             ),
           ),
           const SizedBox(height: 12),
           Text(
             '${income + expense} transactions',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: isDark ? _HomeDesign.darkText : _HomeDesign.lightText,
+              fontWeight: FontWeight.bold,
+              color: WebDesktopStyle.text,
             ),
           ),
           const SizedBox(height: 6),
           Text(
             '$expense expense  ·  $income income',
-            style: TextStyle(
-              fontSize: 14,
-              color: isDark ? _HomeDesign.darkMuted : _HomeDesign.lightMuted,
-            ),
+            style: const TextStyle(fontSize: 14, color: WebDesktopStyle.muted),
           ),
         ],
       ),
@@ -369,93 +517,108 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget _desktopTable(
     BuildContext context,
     List<TransactionEntity> rows,
-    bool isDark,
+    NumberFormat money,
   ) {
     final TextStyle muted = TextStyle(
       fontSize: 13,
-      color: isDark ? _HomeDesign.darkMuted : _HomeDesign.lightMuted,
+      color: WebDesktopStyle.muted,
     );
     final TextStyle body = TextStyle(
       fontSize: 14,
-      color: isDark ? _HomeDesign.darkText : _HomeDesign.lightText,
+      color: WebDesktopStyle.text,
     );
-    final NumberFormat money =
-        NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? _HomeDesign.darkTinted : Colors.white,
-        borderRadius: BorderRadius.circular(_HomeDesign.radiusActivity),
-        border: Border.all(
-          color: isDark ? _HomeDesign.darkBorder : _HomeDesign.lightActivityBorder,
+    return Column(
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            SizedBox(width: 220, child: Text('CATEGORY', style: muted)),
+            Expanded(child: Text('NOTE', style: muted)),
+            SizedBox(width: 150, child: Text('DATE', style: muted)),
+            SizedBox(
+              width: 160,
+              child: Text('AMOUNT', style: muted, textAlign: TextAlign.right),
+            ),
+          ],
         ),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              SizedBox(width: 220, child: Text('CATEGORY', style: muted)),
-              Expanded(child: Text('NOTE', style: muted)),
-              SizedBox(width: 150, child: Text('DATE', style: muted)),
-              SizedBox(
-                width: 160,
-                child: Text('AMOUNT', style: muted, textAlign: TextAlign.right),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ...rows.map(
-            (transaction) => InkWell(
-              onTap: () => context.push('/edit/${transaction.id}'),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Row(
-                  children: <Widget>[
-                    SizedBox(
-                      width: 220,
-                      child: Text(
-                        transaction.displayCategory,
-                        style: body.copyWith(fontWeight: FontWeight.w700),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        transaction.note ?? '—',
-                        style: muted,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    SizedBox(
-                      width: 150,
-                      child: Text(
-                        DateFormat('dd MMM yyyy').format(transaction.date),
-                        style: muted,
-                      ),
-                    ),
-                    SizedBox(
-                      width: 160,
-                      child: Text(
-                        '${transaction.isIncome ? '+' : '-'}${money.format(transaction.amount)}',
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: transaction.isIncome
-                              ? const Color(0xFF24804A)
-                              : const Color(0xFFC53030),
+        const SizedBox(height: 8),
+        ...rows.map(
+          (transaction) => InkWell(
+            onTap: () => context.push('/edit/${transaction.id}'),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                children: <Widget>[
+                  SizedBox(
+                    width: 220,
+                    child: Row(
+                      children: <Widget>[
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: _desktopDot(transaction),
+                            shape: BoxShape.circle,
+                          ),
                         ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            transaction.displayCategory,
+                            style: body.copyWith(fontWeight: FontWeight.w700),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      transaction.note ?? '—',
+                      style: muted,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 150,
+                    child: Text(
+                      DateFormat('dd MMM yyyy').format(transaction.date),
+                      style: muted,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 160,
+                    child: Text(
+                      '${transaction.isIncome ? '+' : '-'}${money.format(transaction.amount)}',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: transaction.isIncome
+                            ? WebDesktopStyle.positive
+                            : WebDesktopStyle.negative,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
+  }
+
+  Color _desktopDot(TransactionEntity transaction) {
+    if (transaction.isIncome) return WebDesktopStyle.positive;
+    final String name = transaction.displayCategory.toLowerCase();
+    if (name.contains('food')) return const Color(0xFFF59E0B);
+    if (name.contains('fuel')) return const Color(0xFFEAB308);
+    if (name.contains('internet') || name.contains('data')) {
+      return WebDesktopStyle.accent;
+    }
+    if (name.contains('other')) return const Color(0xFFA855F7);
+    return WebDesktopStyle.muted;
   }
 
   Future<void> _refresh() async {

@@ -321,6 +321,27 @@ void main() {
             'if(!signedIn && !onLogin) return \'/login\'; return null; }',
       );
     });
+
+    test('signed-out event must send an open page to /login', () {
+      final String main = File('lib/main.dart').readAsStringSync();
+
+      // GoRouter's redirect is not re-run while the user sits on a page. An
+      // expired or revoked session must still return them to the sign-in page.
+      expect(
+        main,
+        allOf(contains('onAuthStateChange'), contains('AuthChangeEvent.signedOut')),
+        reason:
+            'MISSING: main.dart must listen for Supabase signedOut events and '
+            'navigate to /login. Otherwise a session expiring mid-page leaves '
+            'the user staring at failed reads.',
+      );
+      expect(
+        main,
+        contains("go('/login')"),
+        reason:
+            'MISSING: the signedOut listener must navigate to /login.',
+      );
+    });
   });
 
   group('providers.dart repository selection', () {
@@ -622,6 +643,60 @@ void main() {
             'WRONG WORKFLOW: deploy-web.yml must NEVER reference key.properties. '
             'That file is for Android signing (release.yml only). If it appears here, '
             'workflows were merged.',
+      );
+    });
+
+    test('Vercel CLI version must be pinned', () {
+      final String workflow = File('.github/workflows/deploy-web.yml')
+          .readAsStringSync();
+
+      expect(
+        workflow,
+        matches(RegExp(r'npm install --global vercel@\d+\.\d+\.\d+')),
+        reason:
+            'MISSING: deploy-web.yml must install a pinned Vercel CLI version. '
+            'An unpinned global install runs whatever CLI is latest on the day '
+            'the workflow fires, with access to VERCEL_TOKEN.',
+      );
+    });
+  });
+
+  group('web desktop dashboard', () {
+    test('summary cards must not read AsyncValue.value directly', () {
+      final String home = File('lib/presentation/pages/home_page.dart')
+          .readAsStringSync();
+
+      // AsyncValue.value throws on an error state. The table has its own
+      // error branch; the two cards beside it must not take the page down.
+      expect(
+        home,
+        isNot(contains('summaryAsync.value')),
+        reason:
+            'BLOCKER: summaryAsync.value throws when the provider is in an '
+            'error state. Use maybeWhen(data: ..., orElse: () => null).',
+      );
+      expect(
+        home,
+        isNot(contains('transactionsAsync.value')),
+        reason:
+            'BLOCKER: transactionsAsync.value throws on an error state.',
+      );
+    });
+  });
+
+  group('web import input boundary', () {
+    test('browser file picker must cap the file before reading it', () {
+      final String picker =
+          File('lib/data/services/browser_file_picker_web.dart')
+              .readAsStringSync();
+
+      expect(
+        picker,
+        allOf(contains('file.size'), contains('10 * 1024 * 1024')),
+        reason:
+            'MISSING: the web file picker must refuse files over 10 MB before '
+            'FileReader buffers them into the tab. Android already applies '
+            'that ceiling in google_drive_service.dart.',
       );
     });
   });

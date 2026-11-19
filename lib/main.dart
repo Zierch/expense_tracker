@@ -13,6 +13,7 @@ import 'package:expense_tracker/presentation/pages/add_transaction_page.dart';
 import 'package:expense_tracker/presentation/pages/statistics_page.dart';
 import 'package:expense_tracker/presentation/pages/backup_page.dart';
 import 'package:expense_tracker/presentation/providers/theme_provider.dart';
+import 'package:expense_tracker/presentation/theme/web_desktop_style.dart';
 import 'package:expense_tracker/presentation/providers/update_providers.dart';
 import 'package:expense_tracker/data/services/app_update_service.dart';
 import 'package:go_router/go_router.dart';
@@ -104,32 +105,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             return Scaffold(
               body: Row(
                 children: <Widget>[
-                  NavigationRail(
+                  WebSidebar(
                     selectedIndex: shell.currentIndex,
-                    onDestinationSelected: (index) => shell.goBranch(
+                    onSelected: (index) => shell.goBranch(
                       index,
                       initialLocation: index == shell.currentIndex,
                     ),
-                    labelType: NavigationRailLabelType.all,
-                    destinations: const <NavigationRailDestination>[
-                      NavigationRailDestination(
-                        icon: Icon(Icons.home_outlined),
-                        selectedIcon: Icon(Icons.home),
-                        label: Text('Home'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.bar_chart_outlined),
-                        selectedIcon: Icon(Icons.bar_chart),
-                        label: Text('Statistics'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.settings_outlined),
-                        selectedIcon: Icon(Icons.settings),
-                        label: Text('Settings'),
-                      ),
-                    ],
                   ),
-                  const VerticalDivider(width: 1),
                   Expanded(
                     child: Align(
                       alignment: Alignment.topCenter,
@@ -230,6 +212,7 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
   bool _updateDialogOpen = false;
   late bool _showSplash = widget.showSplash;
   Timer? _splashTimer;
+  StreamSubscription<AuthState>? _authSubscription;
 
   @override
   void initState() {
@@ -251,11 +234,28 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
         );
       });
     }
+
+    // GoRouter's redirect only runs on navigation. A session that expires or
+    // is revoked while the user sits on a page would otherwise leave them on
+    // a screen of failed reads, so send them to the sign-in page immediately.
+    // Owned by the State so a hot restart or a test that creates two apps does
+    // not leave an older listener behind.
+    if (kIsWeb) {
+      _authSubscription = Supabase.instance.client.auth.onAuthStateChange
+          .listen((data) {
+        if (data.event != AuthChangeEvent.signedOut) return;
+        final BuildContext? context = rootNavigatorKey.currentContext;
+        if (context != null && context.mounted) {
+          GoRouter.of(context).go('/login');
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     _splashTimer?.cancel();
+    _authSubscription?.cancel();
     super.dispose();
   }
 
@@ -341,6 +341,9 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
 
   ThemeData _buildTheme(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
+    // The FigCraft mockup is a dark navy desktop shell. It is web-only: the
+    // Android build keeps the green palette below, byte for byte.
+    if (kIsWeb && isDark) return _buildWebDesktopTheme();
 
     final scheme = ColorScheme.fromSeed(
       seedColor: isDark ? const Color(0xFF83DFB7) : const Color(0xFF0E5A44),
@@ -413,6 +416,69 @@ class _ExpenseTrackerAppState extends ConsumerState<ExpenseTrackerApp> {
             color: isDark ? const Color(0xFF31443A) : const Color(0xFFD9DEE3),
           ),
         ),
+      ),
+    );
+  }
+
+  ThemeData _buildWebDesktopTheme() {
+    const Color background = WebDesktopStyle.background;
+    const Color card = WebDesktopStyle.card;
+    const Color muted = WebDesktopStyle.muted;
+    const ColorScheme scheme = ColorScheme.dark(
+      primary: WebDesktopStyle.accent,
+      onPrimary: WebDesktopStyle.text,
+      secondary: WebDesktopStyle.positive,
+      surface: card,
+      onSurface: WebDesktopStyle.text,
+      outline: muted,
+    );
+    return ThemeData(
+      useMaterial3: true,
+      fontFamily: 'Inter',
+      colorScheme: scheme,
+      scaffoldBackgroundColor: background,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: background,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        color: card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: Color(0xFF25324A),
+        space: 1,
+        thickness: 1,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: WebDesktopStyle.accent,
+          foregroundColor: WebDesktopStyle.text,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: WebDesktopStyle.text,
+          side: const BorderSide(color: muted),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      dropdownMenuTheme: DropdownMenuThemeData(
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

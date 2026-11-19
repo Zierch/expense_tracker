@@ -26,6 +26,17 @@ Future<({String name, Uint8List bytes})?> pickTextFile() {
       return;
     }
     final html.File file = files.first;
+    // Refuse before reading: FileReader would buffer the whole file in the tab.
+    // Same ceiling the Android import uses (google_drive_service.dart).
+    const int maxBytes = 10 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      cleanup();
+      done.completeError(StateError(
+        'That backup is larger than ${maxBytes ~/ (1024 * 1024)} MB, '
+        'so it was not opened.',
+      ));
+      return;
+    }
     // The picker only accepts JSON, so text is the whole file. Encoding it
     // keeps one signature on both platforms.
     final html.FileReader reader = html.FileReader();

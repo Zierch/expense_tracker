@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -5,6 +6,7 @@ import 'package:expense_tracker/domain/entities/month_range.dart';
 import 'package:expense_tracker/domain/entities/summary_result.dart';
 import 'package:expense_tracker/domain/entities/transaction_entity.dart';
 import 'package:expense_tracker/presentation/providers/providers.dart';
+import 'package:expense_tracker/presentation/theme/web_desktop_style.dart';
 import 'package:expense_tracker/presentation/pages/backup_page.dart' show ReportCard;
 import 'package:expense_tracker/presentation/widgets/category_pie_chart.dart';
 import 'package:expense_tracker/presentation/widgets/month_selector.dart';
@@ -83,6 +85,9 @@ class StatisticsPage extends ConsumerStatefulWidget {
 }
 
 class _StatisticsPageState extends ConsumerState<StatisticsPage> {
+  // FigCraft desktop palette is web + dark only; Android keeps its green one.
+  bool get _webDesktop => kIsWeb && Theme.of(context).brightness == Brightness.dark;
+
   late DateTime _selectedDate = widget.initialMonth ?? DateTime.now();
   late StatisticsPeriod _period = widget.initialPeriod;
   int _tabIndex = 0; // 0 = Expense, 1 = Income
@@ -130,22 +135,47 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     final transactionsAsync = ref.watch(transactionsStreamProvider);
 
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color backgroundColor =
-        isDark ? StatisticsDesign.darkBackground : StatisticsDesign.lightBackground;
-    final Color surfaceColor =
-        isDark ? StatisticsDesign.darkSurface : StatisticsDesign.lightSurface;
-    final Color textColor =
-        isDark ? StatisticsDesign.darkText : StatisticsDesign.lightText;
-    final Color mutedColor =
-        isDark ? StatisticsDesign.darkMuted : StatisticsDesign.lightMuted;
-    final Color borderColor =
-        isDark ? StatisticsDesign.darkBorder : StatisticsDesign.lightBorder;
-    final Color expenseColor =
-        isDark ? StatisticsDesign.darkExpense : StatisticsDesign.lightExpense;
-    final Color incomeColor =
-        isDark ? StatisticsDesign.darkIncome : StatisticsDesign.lightIncome;
-    final Color dailyColor =
-        isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706);
+    // The FigCraft desktop mockup is web-only; Android keeps its green palette.
+    final Color backgroundColor = _webDesktop
+        ? WebDesktopStyle.background
+        : isDark
+            ? StatisticsDesign.darkBackground
+            : StatisticsDesign.lightBackground;
+    final Color surfaceColor = _webDesktop
+        ? WebDesktopStyle.card
+        : isDark
+            ? StatisticsDesign.darkSurface
+            : StatisticsDesign.lightSurface;
+    final Color textColor = _webDesktop
+        ? WebDesktopStyle.text
+        : isDark
+            ? StatisticsDesign.darkText
+            : StatisticsDesign.lightText;
+    final Color mutedColor = _webDesktop
+        ? WebDesktopStyle.muted
+        : isDark
+            ? StatisticsDesign.darkMuted
+            : StatisticsDesign.lightMuted;
+    final Color borderColor = _webDesktop
+        ? const Color(0xFF25324A)
+        : isDark
+            ? StatisticsDesign.darkBorder
+            : StatisticsDesign.lightBorder;
+    final Color expenseColor = _webDesktop
+        ? WebDesktopStyle.negative
+        : isDark
+            ? StatisticsDesign.darkExpense
+            : StatisticsDesign.lightExpense;
+    final Color incomeColor = _webDesktop
+        ? WebDesktopStyle.positive
+        : isDark
+            ? StatisticsDesign.darkIncome
+            : StatisticsDesign.lightIncome;
+    final Color dailyColor = _webDesktop
+        ? const Color(0xFFFBBF24)
+        : isDark
+            ? const Color(0xFFFBBF24)
+            : const Color(0xFFD97706);
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -283,9 +313,9 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     required Color mutedColor,
   }) {
     final activeColor =
-        isDark ? StatisticsDesign.darkTinted : const Color(0xFFD1FAE5);
+        _webDesktop ? WebDesktopStyle.chip : isDark ? StatisticsDesign.darkTinted : const Color(0xFFD1FAE5);
     final activeTextColor =
-        isDark ? StatisticsDesign.darkAccent : StatisticsDesign.primary;
+        _webDesktop ? WebDesktopStyle.positive : isDark ? StatisticsDesign.darkAccent : StatisticsDesign.primary;
 
     return SizedBox(
       width: double.infinity,
@@ -437,9 +467,9 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
     required Color mutedColor,
   }) {
     final activeColor =
-        isDark ? StatisticsDesign.darkTinted : const Color(0xFFD1FAE5);
+        _webDesktop ? WebDesktopStyle.chip : isDark ? StatisticsDesign.darkTinted : const Color(0xFFD1FAE5);
     final activeTextColor =
-        isDark ? StatisticsDesign.darkAccent : StatisticsDesign.primary;
+        _webDesktop ? WebDesktopStyle.positive : isDark ? StatisticsDesign.darkAccent : StatisticsDesign.primary;
 
     return SegmentedButton<int>(
       segments: const [
@@ -714,7 +744,7 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
   }) {
     return Card(
       elevation: 0,
-      color: StatisticsDesign.primary,
+      color: _webDesktop ? WebDesktopStyle.accent : StatisticsDesign.primary,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
@@ -816,8 +846,13 @@ class _StatisticsPageState extends ConsumerState<StatisticsPage> {
                                   child: Container(
                                     decoration: BoxDecoration(
                                       color: bucket.total == maxTotal
-                                          ? StatisticsDesign.primary
-                                          : StatisticsDesign.primary.withOpacity(0.35),
+                                          ? (_webDesktop
+                                              ? WebDesktopStyle.accent
+                                              : StatisticsDesign.primary)
+                                          : (_webDesktop
+                                                  ? WebDesktopStyle.accent
+                                                  : StatisticsDesign.primary)
+                                              .withOpacity(0.35),
                                       borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
                                     ),
                                   ),
