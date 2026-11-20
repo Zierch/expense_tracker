@@ -38,22 +38,39 @@ is already at the top:
 
 ### Web
 
-The same screens in Chrome, at a phone-sized window. The data here is seed
-transactions in a test Supabase account — no real spending and no personal
-email. The Android screenshots above remain the phone app; the web ones below
-are the deployed Vercel build.
+On a wide window the web app uses the navy desktop shell from the FigCraft
+mockup: a side rail, paired summary cards and a transaction table. A
+phone-sized window keeps the Android-style bottom navigation. All screenshots
+come from the deployed Vercel build, signed in to the public demo account with
+seed transactions — no real spending and no personal email.
 
-**Dark theme**
+**Desktop, dark theme (1440 × 900)**
+
+Dashboard:
+
+<img src="assets/screenshots/web-desktop-dashboard-dark.png" width="720" alt="Web dashboard, dark desktop">
+
+Statistics:
+
+<img src="assets/screenshots/web-desktop-statistics-dark.png" width="720" alt="Web statistics, dark desktop">
+
+Settings:
+
+<img src="assets/screenshots/web-desktop-settings-dark.png" width="720" alt="Web settings, dark desktop">
+
+**Phone-sized window**
+
+The same deployed build in a narrow Chrome window, in both themes:
 
 | Dashboard | Statistics | Settings |
 | --- | --- | --- |
-| <img src="assets/screenshots/web-dashboard-dark.png" width="240" alt="Web dashboard, dark"> | <img src="assets/screenshots/web-statistics-dark.png" width="240" alt="Web statistics, dark"> | <img src="assets/screenshots/web-settings-dark.png" width="240" alt="Web settings, dark"> |
+| <img src="assets/screenshots/web-dashboard-dark.png" width="240" alt="Web dashboard, narrow dark"> | <img src="assets/screenshots/web-statistics-dark.png" width="240" alt="Web statistics, narrow dark"> | <img src="assets/screenshots/web-settings-dark.png" width="240" alt="Web settings, narrow dark"> |
 
 **Light theme**
 
 | Dashboard | Statistics | Settings |
 | --- | --- | --- |
-| <img src="assets/screenshots/web-dashboard-light.png" width="240" alt="Web dashboard, light"> | <img src="assets/screenshots/web-statistics-light.png" width="240" alt="Web statistics, light"> | <img src="assets/screenshots/web-settings-light.png" width="240" alt="Web settings, light"> |
+| <img src="assets/screenshots/web-dashboard-light.png" width="240" alt="Web dashboard, narrow light"> | <img src="assets/screenshots/web-statistics-light.png" width="240" alt="Web statistics, narrow light"> | <img src="assets/screenshots/web-settings-light.png" width="240" alt="Web settings, narrow light"> |
 
 ## Download
 
